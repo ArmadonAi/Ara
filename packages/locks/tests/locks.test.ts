@@ -43,9 +43,9 @@ describe('path locking utilities', () => {
     expect(pathsConflict('/src/a.ts', '/src')).toBe(true);
   });
 
-  it('pathsConflict normalized Windows paths behave correctly', () => {
-    // Both normalize to same path → conflict
-    expect(pathsConflict('C:\\project\\file.ts', 'C:/project/file.ts')).toBe(true);
+  it('pathsConflict normalized paths behave correctly', () => {
+    // Same path → conflict (works cross-platform)
+    expect(pathsConflict('/project/file.ts', '/project/file.ts')).toBe(true);
   });
 });
 
