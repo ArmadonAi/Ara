@@ -5,6 +5,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@ara/shared": "workspace:*"
+    "@ara/shared": "workspace:*",
+    "@ara/locks": "workspace:*"
   }
 }

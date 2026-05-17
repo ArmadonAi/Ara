@@ -15,12 +15,14 @@
       "version": "0.1.0",
       "dependencies": {
         "@ara/agent-core": "workspace:*",
+        "@ara/checkpoints": "workspace:*",
         "@ara/hooks": "workspace:*",
         "@ara/memory": "workspace:*",
         "@ara/model-router": "workspace:*",
         "@ara/permissions": "workspace:*",
         "@ara/shared": "workspace:*",
         "@ara/skills": "workspace:*",
+        "@ara/subagents": "workspace:*",
         "@ara/tools": "workspace:*",
         "hono": "^4.6.1",
       },
@@ -32,6 +34,7 @@
         "ara": "./dist/main.js",
       },
       "dependencies": {
+        "@ara/checkpoints": "workspace:*",
         "@ara/commands": "workspace:*",
         "@ara/permissions": "workspace:*",
         "@ara/shared": "workspace:*",
@@ -95,6 +98,7 @@
       "name": "@ara/agent-core",
       "version": "0.1.0",
       "dependencies": {
+        "@ara/checkpoints": "workspace:*",
         "@ara/hooks": "workspace:*",
         "@ara/memory": "workspace:*",
         "@ara/model-router": "workspace:*",
@@ -102,6 +106,25 @@
         "@ara/shared": "workspace:*",
         "@ara/skills": "workspace:*",
         "@ara/tools": "workspace:*",
+      },
+    },
+    "packages/canvas": {
+      "name": "@ara/canvas",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/shared": "workspace:*",
+        "zod": "^3.23.0",
+      },
+    },
+    "packages/checkpoints": {
+      "name": "@ara/checkpoints",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/hooks": "workspace:*",
+        "@ara/permissions": "workspace:*",
+        "@ara/shared": "workspace:*",
+        "@ara/tools": "workspace:*",
+        "zod": "^3.23.8",
       },
     },
     "packages/commands": {
@@ -112,6 +135,17 @@
         "zod": "^3.23.8",
       },
     },
+    "packages/github": {
+      "name": "@ara/github",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/checkpoints": "workspace:*",
+        "@ara/hooks": "workspace:*",
+        "@ara/permissions": "workspace:*",
+        "@ara/shared": "workspace:*",
+        "zod": "^3.23.0",
+      },
+    },
     "packages/hooks": {
       "name": "@ara/hooks",
       "version": "0.1.0",
@@ -119,6 +153,30 @@
         "@ara/permissions": "workspace:*",
         "@ara/shared": "workspace:*",
         "zod": "^3.23.8",
+      },
+    },
+    "packages/locks": {
+      "name": "@ara/locks",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/permissions": "workspace:*",
+        "@ara/shared": "workspace:*",
+        "zod": "^3.23.0",
+      },
+    },
+    "packages/mcp": {
+      "name": "@ara/mcp",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/checkpoints": "workspace:*",
+        "@ara/hooks": "workspace:*",
+        "@ara/permissions": "workspace:*",
+        "@ara/shared": "workspace:*",
+        "zod": "^3.23.0",
+      },
+      "devDependencies": {
+        "bun-types": "^1.3.14",
+        "typescript": "^5.7.0",
       },
     },
     "packages/memory": {
@@ -150,6 +208,14 @@
         "zod": "^3.23.8",
       },
     },
+    "packages/skill-learning": {
+      "name": "@ara/skill-learning",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/shared": "workspace:*",
+        "zod": "^3.23.0",
+      },
+    },
     "packages/skills": {
       "name": "@ara/skills",
       "version": "0.1.0",
@@ -157,10 +223,27 @@
         "@ara/shared": "workspace:*",
       },
     },
+    "packages/subagents": {
+      "name": "@ara/subagents",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ara/hooks": "workspace:*",
+        "@ara/model-router": "workspace:*",
+        "@ara/permissions": "workspace:*",
+        "@ara/shared": "workspace:*",
+        "@ara/tools": "workspace:*",
+        "js-yaml": "^4.1.0",
+        "zod": "^3.23.8",
+      },
+      "devDependencies": {
+        "@types/js-yaml": "^4.0.9",
+      },
+    },
     "packages/tools": {
       "name": "@ara/tools",
       "version": "0.1.0",
       "dependencies": {
+        "@ara/locks": "workspace:*",
         "@ara/shared": "workspace:*",
       },
     },
@@ -170,11 +253,21 @@
 
     "@ara/agent-core": ["@ara/agent-core@workspace:packages/agent-core"],
 
+    "@ara/canvas": ["@ara/canvas@workspace:packages/canvas"],
+
+    "@ara/checkpoints": ["@ara/checkpoints@workspace:packages/checkpoints"],
+
     "@ara/cli": ["@ara/cli@workspace:apps/cli"],
 
     "@ara/commands": ["@ara/commands@workspace:packages/commands"],
 
+    "@ara/github": ["@ara/github@workspace:packages/github"],
+
     "@ara/hooks": ["@ara/hooks@workspace:packages/hooks"],
+
+    "@ara/locks": ["@ara/locks@workspace:packages/locks"],
+
+    "@ara/mcp": ["@ara/mcp@workspace:packages/mcp"],
 
     "@ara/memory": ["@ara/memory@workspace:packages/memory"],
 
@@ -184,7 +277,11 @@
 
     "@ara/shared": ["@ara/shared@workspace:packages/shared"],
 
+    "@ara/skill-learning": ["@ara/skill-learning@workspace:packages/skill-learning"],
+
     "@ara/skills": ["@ara/skills@workspace:packages/skills"],
+
+    "@ara/subagents": ["@ara/subagents@workspace:packages/subagents"],
 
     "@ara/tools": ["@ara/tools@workspace:packages/tools"],
 
@@ -306,6 +403,8 @@
 
     "@types/estree": ["@types/estree@1.0.9", "", {}, "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg=="],
 
+    "@types/js-yaml": ["@types/js-yaml@4.0.9", "", {}, "sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg=="],
+
     "@types/json-schema": ["@types/json-schema@7.0.15", "", {}, "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA=="],
 
     "@types/node": ["@types/node@24.12.4", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA=="],
@@ -351,6 +450,8 @@
     "ansi-styles": ["ansi-styles@4.3.0", "", { "dependencies": { "color-convert": "^2.0.1" } }, "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg=="],
 
     "api": ["api@workspace:apps/api"],
+
+    "argparse": ["argparse@2.0.1", "", {}, "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q=="],
 
     "auto-bind": ["auto-bind@5.0.1", "", {}, "sha512-ooviqdwwgfIfNmDwo94wlshcdzfO64XV0Cg6oDsDYBJfITDz1EngD2z7DkbvCWn+XIMsIqW27sEVF6qcpJrRcg=="],
 
@@ -489,6 +590,8 @@
     "isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
     "js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
+
+    "js-yaml": ["js-yaml@4.1.1", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA=="],
 
     "jsesc": ["jsesc@3.1.0", "", { "bin": { "jsesc": "bin/jsesc" } }, "sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA=="],
 

@@ -27,6 +27,7 @@ export interface ToolContext {
   memoryAccess: any;
   auditLogger: any;
   approvalChecker: any;
+  toolRegistry?: any;
 }
 
 export interface ToolResult {

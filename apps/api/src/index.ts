@@ -10,10 +10,11 @@ import {
   ToolRegistry,
   ListFilesTool, 
   ReadFileTool, 
-  WriteFileTool, 
-  RunShellTool, 
-  GitStatusTool, 
-  GitDiffTool 
+  WriteFileTool,
+  EditFileTool,
+  RunShellTool,
+  GitStatusTool,
+  GitDiffTool
 } from '@ara/tools';
 import { LocalMarkdownMemoryStore } from '@ara/memory';
 import { LocalMarkdownSkillLoader } from '@ara/skills';
@@ -21,6 +22,53 @@ import { ModelRouter, GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaP
 import { AgentRuntime } from '@ara/agent-core';
 import { evaluatePermission, defaultDenyRules, type PermissionMode, type PermissionRequest } from '@ara/permissions';
 import { loadHookConfig, SettingsSchema, runHooks, createHookEventPayload } from '@ara/hooks';
+import {
+  getRegistry,
+  listMCPAudit,
+  buildMCPAuditRecord,
+  MCPHealthMonitor,
+  initAuditStore,
+} from '@ara/mcp';
+import {
+  loadGitHubConfig,
+  createGitHubTools,
+  GitHubClient,
+  getGitHubHealth,
+  listGitHubAudit,
+  buildGitHubAuditRecord,
+  initGitHubAudit,
+  redactGitHubSecret,
+} from '@ara/github';
+import { acquireLock, releaseLock, forceReleaseLock, listLocks, cleanupExpiredLocks, listLockAudit, writeLockAudit } from '@ara/locks';
+import { startParallelRun, cancelParallelRun, getParallelRun, listParallelRuns } from '@ara/subagents';
+import {
+  createWorkspace, listWorkspaces, getWorkspace, updateWorkspace, deleteWorkspace,
+  addNode, updateNode, deleteNode, getAllNodes, queryNodes,
+  addEdge, deleteEdge, getAllEdges, getFullWorkspace,
+  exportCanvas, executeSafeAction, writeCanvasAudit, listCanvasAudit, resolveActionSafety,
+  CreateWorkspaceSchema, AddNodeSchema, UpdateNodeSchema, AddEdgeSchema, CanvasActionSchema,
+} from '@ara/canvas';
+import crypto from 'node:crypto';
+import {
+  updateWorkflowFingerprint, findRepeatedWorkflows, listWorkflowFingerprints, clearFingerprints,
+  generateDraft, listDrafts, loadDraft, updateDraftStatus, approveDraft,
+  listSkillStats, recordSkillUsage, listSkillLearningAudit, initStatsStore,
+} from '@ara/skill-learning';
+import { 
+  DelegateTaskTool, 
+  loadAgentProfiles, 
+  selectSubagent, 
+  createSubagentRun, 
+  runSubagent 
+} from '@ara/subagents';
+import {
+  createCheckpoint,
+  listCheckpoints,
+  getCheckpoint,
+  diffCheckpoint,
+  restoreCheckpoint,
+  shouldCreateCheckpointBeforeTool
+} from '@ara/checkpoints';
 
 // 1. Initialize SQLite database for local-first session persistence
 const db = new Database('ara.sqlite');
@@ -87,6 +135,27 @@ db.run(`
     output TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY(automation_id) REFERENCES automations(id)
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS subagent_runs (
+    id TEXT PRIMARY KEY,
+    parent_session_id TEXT NOT NULL,
+    child_session_id TEXT NOT NULL,
+    profile_name TEXT NOT NULL,
+    task TEXT NOT NULL,
+    context TEXT,
+    allowed_tools TEXT,
+    permission_mode TEXT,
+    status TEXT NOT NULL,
+    result TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    FOREIGN KEY(parent_session_id) REFERENCES sessions(id),
+    FOREIGN KEY(child_session_id) REFERENCES sessions(id)
   )
 `);
 
@@ -245,13 +314,31 @@ router.register(new OpenAIProvider());
 router.register(new AnthropicProvider());
 router.register(new OllamaProvider());
 
+/**
+ * Register MCP tools from a server into the global ToolRegistry.
+ * Each tool is adapted via MCPToolAdapter and registered as mcp.<serverId>.<toolName>.
+ */
+async function registerMcpTools(serverId: string): Promise<void> {
+  const { adaptDiscoveredTools } = await import('@ara/mcp');
+  const registry = getRegistry();
+  const server = registry.getServer(serverId);
+  if (!server || server.tools.length === 0) return;
+
+  const adapted = adaptDiscoveredTools(server.config, server.tools, server.client, 'system');
+  for (const tool of adapted) {
+    toolsRegistry.register(tool);
+  }
+}
+
 const toolsRegistry = new ToolRegistry();
 toolsRegistry.register(new ListFilesTool());
 toolsRegistry.register(new ReadFileTool());
 toolsRegistry.register(new WriteFileTool());
+toolsRegistry.register(new EditFileTool());
 toolsRegistry.register(new RunShellTool());
 toolsRegistry.register(new GitStatusTool());
 toolsRegistry.register(new GitDiffTool());
+toolsRegistry.register(new DelegateTaskTool());
 
 const runtime = new AgentRuntime(
   router,
@@ -445,6 +532,256 @@ app.get('/api/sessions/:id', (c) => {
     return c.text('Session not found', 404);
   }
   return c.json(session);
+});
+
+// GET /api/subagents: List available agent profiles
+app.get('/api/subagents', async (c) => {
+  try {
+    const profiles = await loadAgentProfiles(path.join(process.cwd(), '.ara', 'agents'));
+    return c.json(profiles);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// GET /api/subagents/:name: Get details of a subagent profile
+app.get('/api/subagents/:name', async (c) => {
+  const name = c.req.param('name');
+  try {
+    const profiles = await loadAgentProfiles(path.join(process.cwd(), '.ara', 'agents'));
+    const profile = selectSubagent(profiles, name);
+    if (!profile) {
+      return c.json({ error: `Profile "${name}" not found.` }, 404);
+    }
+    return c.json(profile);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// POST /api/subagents/runs: Delegate a task to a subagent and run it asynchronously
+app.post('/api/subagents/runs', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { profileName, task, context, parentSessionId, allowedTools, maxTurns } = body;
+    
+    if (!profileName || !task) {
+      return c.json({ error: 'Missing required fields: profileName and task.' }, 400);
+    }
+
+    const profiles = await loadAgentProfiles(path.join(process.cwd(), '.ara', 'agents'));
+    const profile = selectSubagent(profiles, profileName);
+    if (!profile) {
+      return c.json({ error: `Profile "${profileName}" not found.` }, 404);
+    }
+
+    const parentId = parentSessionId || 'default-parent';
+    const run = createSubagentRun(parentId, profile, task, context || '', {
+      allowedTools,
+      maxTurns
+    });
+
+    // 1. Insert child session
+    db.run(
+      'INSERT INTO sessions (id, title, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [
+        run.childSessionId,
+        `[Subagent: ${profile.name}] ${task.slice(0, 30)}`,
+        profile.model || 'Gemini',
+        new Date().toISOString(),
+        new Date().toISOString()
+      ]
+    );
+
+    // 2. Insert run record
+    db.run(
+      `INSERT INTO subagent_runs (
+        id, parent_session_id, child_session_id, profile_name, task, context, allowed_tools, permission_mode, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.id,
+        run.parentSessionId,
+        run.childSessionId,
+        run.profileName,
+        run.task,
+        run.context,
+        JSON.stringify(run.allowedTools),
+        run.permissionMode,
+        'running',
+        run.createdAt.toISOString()
+      ]
+    );
+
+    // Audit log entry
+    db.run(
+      'INSERT INTO audit_logs (id, session_id, tool_name, input, output, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        Math.random().toString(36).substring(7),
+        run.parentSessionId,
+        'subagent.run.created',
+        JSON.stringify({ runId: run.id }),
+        `Created subagent run ${run.id}`,
+        'success',
+        new Date().toISOString()
+      ]
+    );
+
+    // 3. Execute subagent run in background
+    (async () => {
+      try {
+        const writeTranscriptEvent = (sessId: string, eventType: string, payload: any) => {
+          try {
+            const dir = path.join(process.cwd(), '.ara', 'sessions');
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            const filePath = path.join(dir, `${sessId}.jsonl`);
+            const seq = fs.existsSync(filePath)
+              ? fs.readFileSync(filePath, 'utf8').trim().split('\n').length + 1
+              : 1;
+
+            const record = {
+              seq,
+              timestamp: new Date().toISOString(),
+              sessionId: sessId,
+              eventType,
+              payload
+            };
+            fs.appendFileSync(filePath, JSON.stringify(record) + '\n', 'utf8');
+          } catch (err) {}
+        };
+
+        const writeAuditLog = (sessId: string, toolName: string, toolInput: any, outputSummary: string, status: 'success' | 'failed') => {
+          db.run(
+            'INSERT INTO audit_logs (id, session_id, tool_name, input, output, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [
+              Math.random().toString(36).substring(7),
+              sessId,
+              toolName,
+              JSON.stringify(toolInput),
+              outputSummary,
+              status,
+              new Date().toISOString()
+            ]
+          );
+        };
+
+        const saveMsg = (sessId: string, msg: any) => {
+          db.run(
+            'INSERT OR REPLACE INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+            [msg.id, sessId, msg.role, msg.content, msg.createdAt.toISOString()]
+          );
+        };
+
+        const runtimeCtx = {
+          modelRouter: router,
+          toolRegistry: toolsRegistry,
+          cwd: process.cwd(),
+          writeTranscriptEvent,
+          writeAuditLog,
+          saveMessage: saveMsg
+        };
+
+        const result = await runSubagent(run, profile, runtimeCtx);
+
+        db.run(
+          'UPDATE subagent_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?',
+          ['completed', JSON.stringify(result), new Date().toISOString(), run.id]
+        );
+      } catch (err: any) {
+        db.run(
+          'UPDATE subagent_runs SET status = ?, error = ?, finished_at = ? WHERE id = ?',
+          ['failed', err.message, new Date().toISOString(), run.id]
+        );
+      }
+    })();
+
+    return c.json(run);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// GET /api/subagents/runs: Get list of all subagent runs
+app.get('/api/subagents/runs', (c) => {
+  const rows = db.query('SELECT * FROM subagent_runs ORDER BY created_at DESC').all() as any[];
+  const runs = rows.map(r => ({
+    id: r.id,
+    parentSessionId: r.parent_session_id,
+    childSessionId: r.child_session_id,
+    profileName: r.profile_name,
+    task: r.task,
+    context: r.context,
+    allowedTools: JSON.parse(r.allowed_tools || '[]'),
+    permissionMode: r.permission_mode,
+    status: r.status,
+    result: r.result ? JSON.parse(r.result) : undefined,
+    error: r.error,
+    createdAt: r.created_at,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at
+  }));
+  return c.json(runs);
+});
+
+// GET /api/subagents/runs/:id: Get details of a single subagent run
+app.get('/api/subagents/runs/:id', (c) => {
+  const id = c.req.param('id');
+  const r = db.query('SELECT * FROM subagent_runs WHERE id = ?').get(id) as any;
+  if (!r) {
+    return c.json({ error: `Run "${id}" not found.` }, 404);
+  }
+  return c.json({
+    id: r.id,
+    parentSessionId: r.parent_session_id,
+    childSessionId: r.child_session_id,
+    profileName: r.profile_name,
+    task: r.task,
+    context: r.context,
+    allowedTools: JSON.parse(r.allowed_tools || '[]'),
+    permissionMode: r.permission_mode,
+    status: r.status,
+    result: r.result ? JSON.parse(r.result) : undefined,
+    error: r.error,
+    createdAt: r.created_at,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at
+  });
+});
+
+// POST /api/subagents/runs/:id/cancel: Cancel an active subagent run
+app.post('/api/subagents/runs/:id/cancel', (c) => {
+  const id = c.req.param('id');
+  const r = db.query('SELECT * FROM subagent_runs WHERE id = ?').get(id) as any;
+  if (!r) {
+    return c.json({ error: `Run "${id}" not found.` }, 404);
+  }
+  if (r.status === 'running' || r.status === 'pending') {
+    db.run('UPDATE subagent_runs SET status = ?, finished_at = ? WHERE id = ?', ['cancelled', new Date().toISOString(), id]);
+    return c.json({ success: true, message: 'Run cancelled successfully.' });
+  }
+  return c.json({ error: 'Run is not in a cancellable state.' }, 400);
+});
+
+// GET /api/sessions/:id/subagent-runs: Get subagent runs associated with a parent session
+app.get('/api/sessions/:id/subagent-runs', (c) => {
+  const id = c.req.param('id');
+  const rows = db.query('SELECT * FROM subagent_runs WHERE parent_session_id = ? ORDER BY created_at DESC').all(id) as any[];
+  const runs = rows.map(r => ({
+    id: r.id,
+    parentSessionId: r.parent_session_id,
+    childSessionId: r.child_session_id,
+    profileName: r.profile_name,
+    task: r.task,
+    context: r.context,
+    allowedTools: JSON.parse(r.allowed_tools || '[]'),
+    permissionMode: r.permission_mode,
+    status: r.status,
+    result: r.result ? JSON.parse(r.result) : undefined,
+    error: r.error,
+    createdAt: r.created_at,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at
+  }));
+  return c.json(runs);
 });
 
 // GET /api/memories: Retrieve all memories dynamically from USER.md and MEMORY.md files
@@ -654,6 +991,19 @@ app.post('/api/approvals/:id/resolve', async (c) => {
     };
     
     writeTranscriptEvent(approval.session_id, 'tool.started', { toolName, input: parsedInput });
+
+    // Automatically create a checkpoint before running mutating tool if approved
+    if (shouldCreateCheckpointBeforeTool(toolName, parsedInput)) {
+      try {
+        await createCheckpoint(approval.session_id, process.cwd(), `Automatically created before approved running tool: ${toolName}`, {
+          createdBy: 'agent',
+          beforeToolName: toolName,
+          beforeToolInput: JSON.stringify(parsedInput)
+        });
+      } catch (err) {
+        // Fail silently
+      }
+    }
 
     // Run tool
     const result = await tool.run(parsedInput, ctx);
@@ -999,6 +1349,63 @@ app.post('/api/config', async (c) => {
   return c.json({ success: true, activeModel });
 });
 
+// GET /api/config/keys: Query presence of configured credentials
+app.get('/api/config/keys', (c) => {
+  return c.json({
+    GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+    OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+    ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY
+  });
+});
+
+// POST /api/config/keys: Write LLM credentials directly to .env and process.env
+app.post('/api/config/keys', async (c) => {
+  try {
+    const { GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY } = await c.req.json();
+    const envPath = path.join(process.cwd(), '.env');
+    
+    let envContent = '';
+    if (fs.existsSync(envPath)) {
+      envContent = fs.readFileSync(envPath, 'utf8');
+    }
+
+    const lines = envContent.split('\n');
+    const keyMap = new Map<string, string>();
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const idx = trimmed.indexOf('=');
+        if (idx !== -1) {
+          const k = trimmed.slice(0, idx).trim();
+          const v = trimmed.slice(idx + 1).trim();
+          keyMap.set(k, v);
+        }
+      }
+    }
+
+    if (GEMINI_API_KEY !== undefined) keyMap.set('GEMINI_API_KEY', GEMINI_API_KEY);
+    if (OPENAI_API_KEY !== undefined) keyMap.set('OPENAI_API_KEY', OPENAI_API_KEY);
+    if (ANTHROPIC_API_KEY !== undefined) keyMap.set('ANTHROPIC_API_KEY', ANTHROPIC_API_KEY);
+
+    let newContent = '';
+    keyMap.forEach((v, k) => {
+      newContent += `${k}=${v}\n`;
+    });
+
+    fs.writeFileSync(envPath, newContent, 'utf8');
+    
+    if (GEMINI_API_KEY) process.env.GEMINI_API_KEY = GEMINI_API_KEY;
+    if (OPENAI_API_KEY) process.env.OPENAI_API_KEY = OPENAI_API_KEY;
+    if (ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = ANTHROPIC_API_KEY;
+
+    return c.json({ success: true, message: 'API keys updated successfully' });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+
 // PATCH /api/sessions/:id/config: Update active model config for session
 app.patch('/api/sessions/:id/config', async (c) => {
   const id = c.req.param('id');
@@ -1110,6 +1517,82 @@ app.post('/api/permissions/evaluate', async (c) => {
   return c.json(result);
 });
 
+// GET /api/checkpoints: List all checkpoints
+app.get('/api/checkpoints', async (c) => {
+  const list = await listCheckpoints(process.cwd());
+  return c.json(list);
+});
+
+// GET /api/sessions/:id/checkpoints: Retrieve session-specific checkpoints
+app.get('/api/sessions/:id/checkpoints', async (c) => {
+  const id = c.req.param('id');
+  const list = await listCheckpoints(process.cwd());
+  const filtered = list.filter(chk => chk.sessionId === id);
+  return c.json(filtered);
+});
+
+// POST /api/sessions/:id/checkpoints: Manual checkpoint trigger
+app.post('/api/sessions/:id/checkpoints', async (c) => {
+  const id = c.req.param('id');
+  const { reason, createdBy, specificFiles, metadata } = await c.req.json().catch(() => ({}));
+  try {
+    const chk = await createCheckpoint(id, process.cwd(), reason || 'Manual Checkpoint', {
+      createdBy: createdBy || 'user',
+      specificFiles,
+      customDb: db,
+      metadata
+    });
+    return c.json(chk, 201);
+  } catch (err: any) {
+    return c.text(err.message, 500);
+  }
+});
+
+// GET /api/checkpoints/:id: Retrieve details of a checkpoint
+app.get('/api/checkpoints/:id', async (c) => {
+  const id = c.req.param('id');
+  const chk = await getCheckpoint(id, process.cwd());
+  if (!chk) {
+    return c.text('Checkpoint not found', 404);
+  }
+  return c.json(chk);
+});
+
+// GET /api/checkpoints/:id/diff: Inspect diff changes relative to checkpoint
+app.get('/api/checkpoints/:id/diff', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const diff = await diffCheckpoint(id, process.cwd(), db);
+    return c.json(diff);
+  } catch (err: any) {
+    return c.text(err.message, 404);
+  }
+});
+
+// POST /api/checkpoints/:id/restore: Revert workspace files and/or session messages state
+app.post('/api/checkpoints/:id/restore', async (c) => {
+  const id = c.req.param('id');
+  const { mode } = await c.req.json().catch(() => ({ mode: 'both' }));
+  
+  try {
+    const chk = await getCheckpoint(id, process.cwd());
+    if (!chk) {
+      return c.text('Checkpoint not found', 404);
+    }
+    
+    // Create pre-restore safety checkpoint automatically!
+    await createCheckpoint(chk.sessionId, process.cwd(), `before_restore_${id}`, {
+      createdBy: 'system',
+      customDb: db
+    });
+
+    const result = await restoreCheckpoint(id, process.cwd(), mode, db);
+    return c.json(result);
+  } catch (err: any) {
+    return c.text(err.message, 500);
+  }
+});
+
 // GET /api/hooks: Retrieve all active hooks and diagnostic flags
 app.get('/api/hooks', (c) => {
   const config = loadHookConfig();
@@ -1176,6 +1659,1039 @@ app.post('/api/hooks/test', async (c) => {
   } catch (e: any) {
     return c.json({ success: false, error: e.message }, 500);
   }
+});
+
+// ── MCP / External Tools routes ────────────────────────────────────────
+
+// Lazy-init MCP registry
+let mcpInitialized = false;
+async function ensureMCP() {
+  if (!mcpInitialized) {
+    // Init persistent audit store
+    initAuditStore(path.join(process.cwd(), '.ara', 'audit', 'mcp.jsonl'));
+    const registry = getRegistry();
+    const result = await registry.loadConfig(process.cwd());
+    mcpInitialized = true;
+    // Register all already-discovered tools from enabled servers
+    for (const id of registry.listServerIds()) {
+      const server = registry.getServer(id);
+      if (server && server.tools.length > 0) {
+        await registerMcpTools(id);
+      }
+    }
+  }
+  return getRegistry();
+}
+
+// GET /api/mcp/servers — list all configured servers
+app.get('/api/mcp/servers', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const config = registry.getConfig();
+    return c.json({ servers: config.servers });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/mcp/status — MCP subsystem status summary
+app.get('/api/mcp/status', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const config = registry.getConfig();
+    const enabled = config.servers.filter(s => s.enabled);
+    const running = registry.listEnabled();
+    const healthMonitor = new MCPHealthMonitor();
+    for (const entry of running) {
+      healthMonitor.update({
+        serverId: entry.config.id,
+        state: entry.state,
+        toolCount: entry.tools.length,
+      });
+    }
+    const audit = listMCPAudit({ limit: 5 });
+    return c.json({
+      configuredServers: config.servers.length,
+      enabledServers: enabled.length,
+      runningServers: running.length,
+      healthSummary: healthMonitor.getSummary(),
+      recentAuditEvents: audit.length,
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/mcp/servers/:id — get a specific server
+app.get('/api/mcp/servers/:id', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const server = registry.getServer(id);
+    if (!server) {
+      return c.json({ error: `Server "${id}" not found` }, 404);
+    }
+    return c.json({
+      id: server.config.id,
+      name: server.config.name,
+      type: server.config.type,
+      enabled: server.config.enabled,
+      trusted: server.config.trusted,
+      permissionMode: server.config.permissionMode,
+      state: server.state,
+      tools: server.tools,
+      lastError: server.lastError,
+      lastCheckedAt: server.lastCheckedAt,
+      uptimeStart: server.uptimeStart,
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/servers/:id/start — start an MCP server
+app.post('/api/mcp/servers/:id/start', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const result = await registry.startServer(id);
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400);
+    }
+    // Register tools into the global ToolRegistry
+    await registerMcpTools(id);
+    buildMCPAuditRecord({
+      eventType: 'mcp.server.started',
+      serverId: id,
+      serverName: id,
+      sessionId: 'api',
+      startedAt: new Date().toISOString(),
+    });
+    return c.json({ ok: true, tools: result.tools });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/servers/:id/stop — stop an MCP server
+app.post('/api/mcp/servers/:id/stop', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const result = await registry.stopServer(id);
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400);
+    }
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/servers/:id/restart — restart an MCP server
+app.post('/api/mcp/servers/:id/restart', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const result = await registry.restartServer(id);
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400);
+    }
+    await registerMcpTools(id);
+    return c.json({ ok: true, tools: result.tools });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/servers/:id/reconnect — reconnect a failed server
+app.post('/api/mcp/servers/:id/reconnect', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const result = await registry.reconnectServer(id);
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400);
+    }
+    await registerMcpTools(id);
+    return c.json({ ok: true, tools: result.tools });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/mcp/audit — list MCP audit records
+app.get('/api/mcp/audit', async (c) => {
+  try {
+    await ensureMCP();
+    const serverId = c.req.query('serverId') || undefined;
+    const sessionId = c.req.query('sessionId') || undefined;
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined;
+    const records = listMCPAudit({ serverId, sessionId, limit });
+    return c.json({ records });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/mcp/health — health check all servers
+app.get('/api/mcp/health', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const results = await registry.healthCheck();
+    return c.json({ results });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// ── Section A: Additional MCP Routes ─────────────────────────────────
+
+// GET /api/mcp — MCP overview
+app.get('/api/mcp', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const config = registry.getConfig();
+    const enabled = config.servers.filter(s => s.enabled);
+    const running = registry.listEnabled();
+    const allTools: { serverId: string; serverName: string; tools: any[] }[] = [];
+    for (const entry of running) {
+      allTools.push({
+        serverId: entry.config.id,
+        serverName: entry.config.name,
+        tools: entry.tools,
+      });
+    }
+    const healthMonitor = new MCPHealthMonitor();
+    for (const entry of running) {
+      healthMonitor.update({
+        serverId: entry.config.id,
+        state: entry.state,
+        toolCount: entry.tools.length,
+      });
+    }
+    return c.json({
+      servers: config.servers.length,
+      enabled: enabled.length,
+      running: running.length,
+      healthSummary: healthMonitor.getSummary(),
+      discoveredTools: allTools,
+      auditEvents: listMCPAudit({ limit: 3 }),
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/mcp/servers/:id/tools — list discovered tools for one server
+app.get('/api/mcp/servers/:id/tools', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const server = registry.getServer(id);
+    if (!server) return c.json({ error: `Server "${id}" not found` }, 404);
+    return c.json({ serverId: id, tools: server.tools, state: server.state });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/mcp/tools — list all discovered MCP tools across all servers
+app.get('/api/mcp/tools', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const all: any[] = [];
+    const running = registry.listEnabled();
+    for (const entry of running) {
+      for (const tool of entry.tools) {
+        all.push({
+          fullName: `mcp.${entry.config.id}.${tool.name}`,
+          serverId: entry.config.id,
+          serverName: entry.config.name,
+          name: tool.name,
+          description: tool.description,
+          dangerLevel: tool.dangerLevel,
+          mutating: tool.mutating,
+          inputSchema: tool.inputSchema,
+        });
+      }
+    }
+    return c.json({ tools: all });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/tools/:fullToolName/call — call an MCP tool through the full safety pipeline
+app.post('/api/mcp/tools/:fullToolName/call', async (c) => {
+  try {
+    const fullToolName = c.req.param('fullToolName');
+    const { sessionId, input } = await c.req.json() as { sessionId?: string; input?: Record<string, unknown> };
+
+    if (!sessionId) return c.json({ error: 'sessionId is required' }, 400);
+
+    // Parse fullToolName = mcp.<serverId>.<toolName>
+    const parts = fullToolName.split('.');
+    if (parts.length < 3 || parts[0] !== 'mcp') {
+      return c.json({ error: `Invalid tool name "${fullToolName}". Format: mcp.<serverId>.<toolName>` }, 400);
+    }
+    const serverId = parts[1];
+    const toolName = parts.slice(2).join('.');
+
+    const registry = await ensureMCP();
+    const server = registry.getServer(serverId);
+    if (!server) return c.json({ error: `Server "${serverId}" not found` }, 404);
+    if (!server.config.enabled) return c.json({ error: `Server "${serverId}" is disabled` }, 403);
+
+    const tool = server.tools.find(t => t.name === toolName);
+    if (!tool) return c.json({ error: `Tool "${toolName}" not found on server "${serverId}"` }, 404);
+
+    // Create MCPToolAdapter and run through full safety pipeline
+    const { MCPToolAdapter } = await import('@ara/mcp');
+    const adapter = new MCPToolAdapter({
+      serverConfig: server.config,
+      discoveredTool: tool,
+      mcpClient: server.client,
+      sessionId,
+    });
+
+    const result = await adapter.run(input || {}, {
+      cwd: process.cwd(),
+      sessionId,
+      permissionMode: server.config.permissionMode,
+    });
+
+    if (!result.success && result.error?.includes('AWAITING APPROVAL')) {
+      return c.json({ awaitingApproval: true, error: result.error });
+    }
+
+    return c.json({ ok: result.success, output: result.output, error: result.error });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/config/validate — validate MCP config format without applying
+app.post('/api/mcp/config/validate', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { validateMCPConfig } = await import('@ara/mcp');
+    const result = validateMCPConfig(body);
+    if (!result.ok) {
+      return c.json({ valid: false, error: result.error });
+    }
+    return c.json({ valid: true, data: result.data });
+  } catch (e: any) {
+    return c.json({ valid: false, error: e.message }, 400);
+  }
+});
+
+// ── Tool Refresh Routes ────────────────────────────────────────────
+
+// POST /api/mcp/servers/:id/tools/refresh — refresh tools for one server
+app.post('/api/mcp/servers/:id/tools/refresh', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const id = c.req.param('id');
+    const result = await registry.refreshTools(id);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    // Re-register tools in Tool Registry
+    await registerMcpTools(id);
+    return c.json({ ok: true, tools: result.tools, removed: result.removed });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// POST /api/mcp/tools/refresh — refresh tools for all running servers
+app.post('/api/mcp/tools/refresh', async (c) => {
+  try {
+    const registry = await ensureMCP();
+    const result = await registry.refreshAllTools();
+    // Re-register tools for each refreshed server
+    for (const r of result.results) {
+      if (r.ok) {
+        await registerMcpTools(r.serverId);
+      }
+    }
+    return c.json(result);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// ── GitHub Integration Routes ──────────────────────────────────────
+
+let ghInitialized = false;
+let ghClient: GitHubClient | null = null;
+let ghConfig: any = null;
+
+async function ensureGitHub() {
+  if (!ghInitialized) {
+    const cfg = await loadGitHubConfig(process.cwd());
+    ghConfig = cfg;
+    initGitHubAudit(null); // memory-only for now
+    if (cfg.enabled) {
+      ghClient = new GitHubClient(cfg);
+    }
+    ghInitialized = true;
+  }
+  return { config: ghConfig, client: ghClient };
+}
+
+// GET /api/github — GitHub integration overview
+app.get('/api/github', async (c) => {
+  try {
+    const { config, client } = await ensureGitHub();
+    return c.json({
+      enabled: config.enabled,
+      defaultOwner: config.defaultOwner,
+      defaultRepo: config.defaultRepo,
+      tokenPresent: client ? client.getTokenPresent() : false,
+      readOnly: config.readOnly,
+      allowedRepos: config.allowedRepos,
+      permissionMode: config.permissionMode,
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// GET /api/github/status — detailed health
+app.get('/api/github/status', async (c) => {
+  try {
+    const { config, client } = await ensureGitHub();
+    const health = getGitHubHealth(config, client ? client.getTokenPresent() : false);
+    return c.json(health);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// Helper: execute a GitHub tool through the safety pipeline
+async function callGitHubTool(toolName: string, params: Record<string, unknown>, sessionId: string, c: any) {
+  const { config, client } = await ensureGitHub();
+  if (!client) return c.json({ error: 'GitHub integration is not configured' }, 400);
+  if (!config.enabled) return c.json({ error: 'GitHub integration is disabled' }, 403);
+
+  const tools = createGitHubTools(client, config);
+  const tool = tools.find(t => t.name === toolName);
+  if (!tool) return c.json({ error: `Unknown GitHub tool: ${toolName}` }, 404);
+
+  const result = await tool.run(params, {
+    cwd: process.cwd(),
+    sessionId,
+    permissionMode: config.permissionMode,
+  });
+
+  if (!result.success && result.error?.includes('AWAITING APPROVAL')) {
+    return c.json({ awaitingApproval: true, error: result.error });
+  }
+  return c.json({ ok: result.success, output: result.output, error: result.error });
+}
+
+// GET /api/github/repos/:owner/:repo
+app.get('/api/github/repos/:owner/:repo', async (c) => {
+  try {
+    const { owner, repo } = c.req.param();
+    return await callGitHubTool('github.get_repo', { owner, repo }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/issues
+app.get('/api/github/repos/:owner/:repo/issues', async (c) => {
+  try {
+    const { owner, repo } = c.req.param();
+    return await callGitHubTool('github.list_issues', { owner, repo }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/issues/:issueNumber
+app.get('/api/github/repos/:owner/:repo/issues/:issueNumber', async (c) => {
+  try {
+    const { owner, repo, issueNumber } = c.req.param();
+    return await callGitHubTool('github.get_issue', { owner, repo, issue_number: parseInt(issueNumber) }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/github/repos/:owner/:repo/issues — create issue
+app.post('/api/github/repos/:owner/:repo/issues', async (c) => {
+  try {
+    const { owner, repo } = c.req.param();
+    const { title, body, labels, sessionId } = await c.req.json();
+    return await callGitHubTool('github.create_issue', { owner, repo, title, body, labels }, sessionId || 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/github/repos/:owner/:repo/issues/:issueNumber/comments
+app.post('/api/github/repos/:owner/:repo/issues/:issueNumber/comments', async (c) => {
+  try {
+    const { owner, repo, issueNumber } = c.req.param();
+    const { body, sessionId } = await c.req.json();
+    return await callGitHubTool('github.comment_issue', { owner, repo, issue_number: parseInt(issueNumber), body }, sessionId || 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/pulls
+app.get('/api/github/repos/:owner/:repo/pulls', async (c) => {
+  try {
+    const { owner, repo } = c.req.param();
+    return await callGitHubTool('github.list_pull_requests', { owner, repo }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/pulls/:pullNumber
+app.get('/api/github/repos/:owner/:repo/pulls/:pullNumber', async (c) => {
+  try {
+    const { owner, repo, pullNumber } = c.req.param();
+    return await callGitHubTool('github.get_pull_request', { owner, repo, pull_number: parseInt(pullNumber) }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/pulls/:pullNumber/files
+app.get('/api/github/repos/:owner/:repo/pulls/:pullNumber/files', async (c) => {
+  try {
+    const { owner, repo, pullNumber } = c.req.param();
+    return await callGitHubTool('github.get_pull_request_files', { owner, repo, pull_number: parseInt(pullNumber) }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/pulls/:pullNumber/diff
+app.get('/api/github/repos/:owner/:repo/pulls/:pullNumber/diff', async (c) => {
+  try {
+    const { owner, repo, pullNumber } = c.req.param();
+    return await callGitHubTool('github.get_pull_request_diff', { owner, repo, pull_number: parseInt(pullNumber) }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/github/repos/:owner/:repo/pulls/:pullNumber/reviews
+app.post('/api/github/repos/:owner/:repo/pulls/:pullNumber/reviews', async (c) => {
+  try {
+    const { owner, repo, pullNumber } = c.req.param();
+    const { body, event, sessionId } = await c.req.json();
+    return await callGitHubTool('github.create_pull_request_review', { owner, repo, pull_number: parseInt(pullNumber), body, event: event || 'COMMENT' }, sessionId || 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/check-runs/:ref
+app.get('/api/github/repos/:owner/:repo/check-runs/:ref', async (c) => {
+  try {
+    const { owner, repo, ref } = c.req.param();
+    return await callGitHubTool('github.list_check_runs', { owner, repo, ref }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/github/repos/:owner/:repo/actions/runs
+app.get('/api/github/repos/:owner/:repo/actions/runs', async (c) => {
+  try {
+    const { owner, repo } = c.req.param();
+    return await callGitHubTool('github.list_workflow_runs', { owner, repo }, 'api', c);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// ── Lock Routes ────────────────────────────────────────────────────
+
+// GET /api/locks — list all active locks
+app.get('/api/locks', async (c) => {
+  try {
+    const status = c.req.query('status') || 'active';
+    const locks = listLocks({ status: status as any });
+    return c.json({ locks });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/locks — acquire a lock
+app.post('/api/locks', async (c) => {
+  try {
+    const { sessionId, path, mode, runId, agentName, reason, ttlMs } = await c.req.json();
+    if (!sessionId || !path || !mode) return c.json({ error: 'sessionId, path, and mode are required' }, 400);
+    const result = acquireLock({ sessionId, path, mode, runId, agentName, reason, ttlMs });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/locks/release — release a lock by ID
+app.post('/api/locks/release', async (c) => {
+  try {
+    const { lockId } = await c.req.json();
+    if (!lockId) return c.json({ error: 'lockId is required' }, 400);
+    const result = releaseLock(lockId);
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/locks/:id/release — release a specific lock
+app.post('/api/locks/:id/release', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const result = releaseLock(id);
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/locks/:id/force-release — force release a lock
+app.post('/api/locks/:id/force-release', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const { reason } = await c.req.json();
+    if (!reason) return c.json({ error: 'reason is required for force release' }, 400);
+    const result = forceReleaseLock(id, reason);
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/locks/cleanup — clean up expired locks
+app.post('/api/locks/cleanup', async (c) => {
+  try {
+    const count = cleanupExpiredLocks();
+    return c.json({ cleaned: count });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/locks/audit — list lock audit records
+app.get('/api/locks/audit', async (c) => {
+  try {
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined;
+    const records = listLockAudit(limit);
+    return c.json({ records });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// ── Parallel Subagent Routes ───────────────────────────────────────
+
+// POST /api/subagents/parallel-runs — start parallel subagents
+app.post('/api/subagents/parallel-runs', async (c) => {
+  try {
+    const { profiles, sessionId, maxConcurrency, task } = await c.req.json();
+    if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
+      return c.json({ error: 'profiles array is required' }, 400);
+    }
+    if (!sessionId) return c.json({ error: 'sessionId is required' }, 400);
+    // Apply the shared task to all profiles if provided
+    const resolvedProfiles = task
+      ? profiles.map((p: any) => ({ name: p.name, task }))
+      : profiles;
+
+    const agentsDir = path.join(process.cwd(), '.ara', 'agents');
+    const modelRouter = runtime.modelRouter;
+    const toolRegistry = runtime.toolRegistry;
+
+    const runtimeCtx = {
+      modelRouter,
+      toolRegistry,
+      cwd: process.cwd(),
+      writeTranscriptEvent: (sid: string, eventType: string, payload: any) => {},
+      writeAuditLog: (sid: string, toolName: string, input: any, output: string, status: string) => {},
+      saveMessage: (sid: string, msg: any) => {},
+    };
+
+    const run = await startParallelRun(resolvedProfiles, sessionId, agentsDir, runtimeCtx, maxConcurrency);
+    return c.json(run);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/subagents/parallel-runs — list all parallel runs
+app.get('/api/subagents/parallel-runs', async (c) => {
+  try {
+    const runs = listParallelRuns();
+    return c.json({ runs });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/subagents/parallel-runs/:id — get a parallel run
+app.get('/api/subagents/parallel-runs/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const run = getParallelRun(id);
+    if (!run) return c.json({ error: 'Parallel run not found' }, 404);
+    return c.json(run);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/subagents/parallel-runs/:id/cancel — cancel a parallel run
+app.post('/api/subagents/parallel-runs/:id/cancel', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const ok = cancelParallelRun(id);
+    if (!ok) return c.json({ error: 'Parallel run not found or not running' }, 400);
+    return c.json({ ok: true });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// ── Canvas Routes ─────────────────────────────────────────────────
+
+// GET /api/canvas/workspaces
+app.get('/api/canvas/workspaces', async (c) => {
+  try {
+    const workspaces = await listWorkspaces(process.cwd());
+    return c.json({ workspaces });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/canvas/workspaces
+app.post('/api/canvas/workspaces', async (c) => {
+  try {
+    const body = await c.req.json();
+    const parsed = CreateWorkspaceSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+    const ws = {
+      id: crypto.randomUUID(),
+      name: parsed.data.name,
+      description: parsed.data.description,
+      projectRoot: parsed.data.projectRoot || process.cwd(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: parsed.data.metadata,
+    };
+    const result = await createWorkspace(ws as any, process.cwd());
+    writeCanvasAudit('canvas.workspace.created', { workspaceId: ws.id, details: ws.name });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/canvas/workspaces/:id
+app.get('/api/canvas/workspaces/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const data = await getFullWorkspace(id, process.cwd());
+    if (!data.workspace) return c.json({ error: 'Workspace not found' }, 404);
+    return c.json(data);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// PATCH /api/canvas/workspaces/:id
+app.patch('/api/canvas/workspaces/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const updated = await updateWorkspace(id, body, process.cwd());
+    if (!updated) return c.json({ error: 'Workspace not found' }, 404);
+    writeCanvasAudit('canvas.workspace.updated', { workspaceId: id });
+    return c.json(updated);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// DELETE /api/canvas/workspaces/:id
+app.delete('/api/canvas/workspaces/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const ok = await deleteWorkspace(id, process.cwd());
+    if (!ok) return c.json({ error: 'Workspace not found' }, 404);
+    writeCanvasAudit('canvas.workspace.deleted', { workspaceId: id });
+    return c.json({ ok: true });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/canvas/workspaces/:id/nodes
+app.post('/api/canvas/workspaces/:id/nodes', async (c) => {
+  try {
+    const wsId = c.req.param('id');
+    const body = await c.req.json();
+    const parsed = AddNodeSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+    const node = {
+      id: crypto.randomUUID(),
+      workspaceId: wsId,
+      type: parsed.data.type,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      position: parsed.data.position || { x: 0, y: 0 },
+      data: parsed.data.data || {},
+      sourceRef: parsed.data.sourceRef,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await addNode(wsId, node as any, process.cwd());
+    if (!result) return c.json({ error: 'Workspace not found' }, 404);
+    writeCanvasAudit('canvas.node.created', { workspaceId: wsId, nodeId: node.id, details: node.type });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// PATCH /api/canvas/workspaces/:id/nodes/:nodeId
+app.patch('/api/canvas/workspaces/:id/nodes/:nodeId', async (c) => {
+  try {
+    const { id: wsId, nodeId } = c.req.param();
+    const body = await c.req.json();
+    const parsed = UpdateNodeSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+    const result = await updateNode(wsId, nodeId, parsed.data, process.cwd());
+    if (!result) return c.json({ error: 'Node not found' }, 404);
+    writeCanvasAudit('canvas.node.updated', { workspaceId: wsId, nodeId });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// DELETE /api/canvas/workspaces/:id/nodes/:nodeId
+app.delete('/api/canvas/workspaces/:id/nodes/:nodeId', async (c) => {
+  try {
+    const { id: wsId, nodeId } = c.req.param();
+    const ok = await deleteNode(wsId, nodeId, process.cwd());
+    if (!ok) return c.json({ error: 'Node not found' }, 404);
+    writeCanvasAudit('canvas.node.deleted', { workspaceId: wsId, nodeId });
+    return c.json({ ok: true });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/canvas/workspaces/:id/edges
+app.post('/api/canvas/workspaces/:id/edges', async (c) => {
+  try {
+    const wsId = c.req.param('id');
+    const body = await c.req.json();
+    const parsed = AddEdgeSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+    const edge = {
+      id: crypto.randomUUID(),
+      workspaceId: wsId,
+      fromNodeId: parsed.data.fromNodeId,
+      toNodeId: parsed.data.toNodeId,
+      label: parsed.data.label,
+      type: parsed.data.type || 'reference',
+      createdAt: new Date().toISOString(),
+      metadata: parsed.data.metadata,
+    };
+    const result = await addEdge(wsId, edge as any, process.cwd());
+    if (!result) return c.json({ error: 'Edge could not be created — nodes may not exist' }, 400);
+    writeCanvasAudit('canvas.edge.created', { workspaceId: wsId, edgeId: edge.id });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// DELETE /api/canvas/workspaces/:id/edges/:edgeId
+app.delete('/api/canvas/workspaces/:id/edges/:edgeId', async (c) => {
+  try {
+    const { id: wsId, edgeId } = c.req.param();
+    const ok = await deleteEdge(wsId, edgeId, process.cwd());
+    if (!ok) return c.json({ error: 'Edge not found' }, 404);
+    writeCanvasAudit('canvas.edge.deleted', { workspaceId: wsId, edgeId });
+    return c.json({ ok: true });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/canvas/workspaces/:id/actions
+app.post('/api/canvas/workspaces/:id/actions', async (c) => {
+  try {
+    const wsId = c.req.param('id');
+    const body = await c.req.json();
+    const parsed = CanvasActionSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+
+    const safety = resolveActionSafety(parsed.data.action);
+    if (safety !== 'safe') {
+      return c.json({
+        awaitingApproval: true,
+        action: parsed.data.action,
+        safety,
+        message: `Action "${parsed.data.action}" has danger level "${safety}" and requires API dispatch through Permission Engine + Approval Gate.`,
+      });
+    }
+
+    const result = await executeSafeAction(wsId, parsed.data.nodeId, parsed.data.action, parsed.data.params, process.cwd());
+    writeCanvasAudit('canvas.action.executed', { workspaceId: wsId, nodeId: parsed.data.nodeId, details: parsed.data.action });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/canvas/workspaces/:id/export
+app.get('/api/canvas/workspaces/:id/export', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const result = await exportCanvas(id, process.cwd());
+    if (!result) return c.json({ error: 'Workspace not found' }, 404);
+    writeCanvasAudit('canvas.exported', { workspaceId: id });
+    return c.json(result);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/canvas/audit
+app.get('/api/canvas/audit', async (c) => {
+  try {
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined;
+    return c.json({ records: listCanvasAudit(limit) });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// ── Skill Learning Routes ──────────────────────────────────────────
+
+let slInitialized = false;
+async function ensureSL() {
+  if (!slInitialized) {
+    initFingerprintStore(path.join(process.cwd(), '.ara', 'skill-learning', 'workflows.jsonl'));
+    initStatsStore(path.join(process.cwd(), '.ara', 'skill-learning', 'usage.jsonl'));
+    slInitialized = true;
+  }
+}
+
+// GET /api/skill-learning — overview
+app.get('/api/skill-learning', async (c) => {
+  try {
+    await ensureSL();
+    const workflows = listWorkflowFingerprints();
+    const drafts = await listDrafts(process.cwd());
+    return c.json({
+      workflowCount: workflows.length,
+      repeatedCount: findRepeatedWorkflows(3).length,
+      draftCount: drafts.length,
+    });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/skill-learning/workflows
+app.get('/api/skill-learning/workflows', async (c) => {
+  try {
+    await ensureSL();
+    const threshold = parseInt(c.req.query('threshold') || '3');
+    const repeated = findRepeatedWorkflows(threshold);
+    return c.json({ workflows: repeated.length > 0 ? repeated : listWorkflowFingerprints() });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/skill-learning/analyze — analyze session and generate drafts
+app.post('/api/skill-learning/analyze', async (c) => {
+  try {
+    const { goal, toolSequence, filesTouched } = await c.req.json();
+    if (!goal || !toolSequence) return c.json({ error: 'goal and toolSequence required' }, 400);
+
+    const fp = updateWorkflowFingerprint({
+      goal, toolSequence, filesTouched, outcome: 'success',
+    });
+
+    let draft = null;
+    if (fp.count >= 3) {
+      draft = await generateDraft(fp, process.cwd());
+    }
+
+    return c.json({ fingerprint: fp, draft, threshold: 3, met: fp.count >= 3 });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/skill-learning/drafts
+app.get('/api/skill-learning/drafts', async (c) => {
+  try {
+    await ensureSL();
+    const drafts = await listDrafts(process.cwd());
+    return c.json({ drafts });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/skill-learning/drafts/:id
+app.get('/api/skill-learning/drafts/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const draft = await loadDraft(id, process.cwd());
+    if (!draft) return c.json({ error: 'Draft not found' }, 404);
+    return c.json(draft);
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/skill-learning/drafts/:id/approve
+app.post('/api/skill-learning/drafts/:id/approve', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const draft = await loadDraft(id, process.cwd());
+    if (!draft) return c.json({ error: 'Draft not found' }, 404);
+    if (draft.status !== 'draft') return c.json({ error: `Draft is already ${draft.status}` }, 400);
+
+    const result = await approveDraft(draft, process.cwd());
+    await updateDraftStatus(id, 'approved', process.cwd());
+
+    return c.json({ ok: true, skillName: result.skillName, version: result.version, isNew: result.isNew });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/skill-learning/drafts/:id/reject
+app.post('/api/skill-learning/drafts/:id/reject', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const draft = await loadDraft(id, process.cwd());
+    if (!draft) return c.json({ error: 'Draft not found' }, 404);
+    const updated = await updateDraftStatus(id, 'rejected', process.cwd());
+    return c.json({ ok: true, status: updated!.status });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/skill-learning/drafts/:id/diff
+app.get('/api/skill-learning/drafts/:id/diff', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const draft = await loadDraft(id, process.cwd());
+    if (!draft) return c.json({ error: 'Draft not found' }, 404);
+    const { approveDraft: ad, skillExists: se } = await import('@ara/skill-learning');
+    const exists = await se(draft.proposedSkillName, process.cwd());
+    return c.json({
+      draft,
+      existingSkill: exists,
+      newContent: draft.body,
+    });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// GET /api/skill-learning/stats
+app.get('/api/skill-learning/stats', async (c) => {
+  try {
+    const stats = listSkillStats();
+    return c.json({ stats });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// Helper: convert transcript JSONL events to SessionTranscriptEntry[]
+function transcriptToEntries(records: any[]): any[] {
+  return records
+    .filter(r => r && r.payload && (r.eventType === 'message' || r.payload.role))
+    .map(r => ({
+      role: r.payload.role || 'unknown',
+      content: r.payload.content || '',
+      toolCalls: r.payload.toolCalls || undefined,
+      timestamp: r.timestamp,
+    }));
+}
+
+// POST /api/skill-learning/analyze/session/:sessionId
+app.post('/api/skill-learning/analyze/session/:sessionId', async (c) => {
+  try {
+    await ensureSL();
+    const sessionId = c.req.param('sessionId');
+    // Load transcript server-side
+    const records = readTranscript(sessionId);
+    if (records.length === 0) return c.json({ error: `Session "${sessionId}" not found or has no transcript` }, 404);
+    const entries = transcriptToEntries(records);
+    const result = await analyzeSession(sessionId, entries, process.cwd());
+    return c.json({
+      sessionId,
+      fingerprintId: result.fingerprint?.id || null,
+      count: result.fingerprint?.count || 0,
+      draftCreated: !!result.draft,
+      draftId: result.draft?.id || null,
+      redactionWarnings: result.draft?.redactionWarnings || [],
+    });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+// POST /api/skill-learning/analyze/recent
+app.post('/api/skill-learning/analyze/recent', async (c) => {
+  try {
+    await ensureSL();
+    const { limit } = await c.req.json();
+    const maxSessions = Math.min(Math.max(limit || 10, 1), 100);
+    // Load recent sessions from SQLite
+    const rows = db.query('SELECT id FROM sessions ORDER BY updated_at DESC LIMIT ?').all(maxSessions) as any[];
+    const sessionIds = rows.map((r: any) => r.id);
+    let fingerprintsUpdated = 0;
+    let draftsCreated = 0;
+    const draftIds: string[] = [];
+    for (const sid of sessionIds) {
+      const records = readTranscript(sid);
+      if (records.length === 0) continue;
+      const entries = transcriptToEntries(records);
+      const result = await analyzeSession(sid, entries, process.cwd());
+      fingerprintsUpdated++;
+      if (result.draft) {
+        draftsCreated++;
+        draftIds.push(result.draft.id);
+      }
+    }
+    return c.json({ sessionsAnalyzed: sessionIds.length, fingerprintsUpdated, draftsCreated, draftIds });
+  } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
 export default {

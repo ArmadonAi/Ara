@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture — Ara</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>System Architecture</h1>
+  <p>Ara is a local-first personal AI control plane built as a Bun monorepo with 16 packages and 4 applications.</p>
+
+  <h2 id="overview">Overview</h2>
+  <div class="section-block">
+    <pre><code>apps/
+  web/        React/Vite dashboard — chat UI, session management
+  api/        Hono REST/SSE server + SQLite — central brain, 60+ routes
+  worker/     Cron scheduler — headless automation
+  cli/        Commander.js CLI + React Ink TUI — 40+ commands
+
+packages/
+  shared/        Core types & Zod schemas
+  agent-core/    ReAct loop orchestrator
+  tools/         8 built-in tools
+  permissions/   5 modes, 21 deny rules
+  hooks/         18 lifecycle events
+  model-router/  Gemini, OpenAI, Anthropic, Ollama
+  memory/        Markdown memory store
+  skills/        Skill procedure loader
+  commands/      Slash command registry
+  checkpoints/   Snapshot, diff, restore
+  subagents/     Isolated agent execution
+  locks/         File locking system
+  mcp/           MCP client/server registry
+  github/        GitHub REST integration
+  canvas/        Workspace node model
+  skill-learning/Workflow detection</code></pre>
+  </div>
+
+  <h2 id="dataflow">Data Flow</h2>
+  <div class="section-block">
+    <pre><code>User Input
+  → API Server (Hono SSE)
+  → AgentRuntime.streamAgentLoop()
+  → LLM (ModelRouter)
+  → Tool Call Detected
+  → Permission Engine (evaluatePermission)
+  → PreToolUse Hook
+  → Approval Gate (if ask)
+  → Checkpoint (if mutating)
+  → File Lock (if mutating)
+  → Tool Execution
+  → PostToolUse / ToolFailed Hook
+  → Audit Log
+  → Response Streamed to User</code></pre>
+  </div>
+
+  <h2 id="storage">Storage</h2>
+  <table>
+    <tr><th>Data</th><th>Location</th><th>Format</th></tr>
+    <tr><td>Sessions, messages, approvals</td><td><code>ara.sqlite</code></td><td>SQLite</td></tr>
+    <tr><td>Session transcripts</td><td><code>.ara/sessions/&lt;id&gt;.jsonl</code></td><td>JSONL</td></tr>
+    <tr><td>Checkpoints</td><td><code>.ara/checkpoints/</code></td><td>JSON + files</td></tr>
+    <tr><td>MCP audit</td><td><code>.ara/audit/mcp.jsonl</code></td><td>JSONL</td></tr>
+    <tr><td>Lock audit</td><td><code>.ara/audit/locks.jsonl</code></td><td>JSONL</td></tr>
+    <tr><td>Canvas workspaces</td><td><code>.ara/canvas/workspaces/&lt;id&gt;.json</code></td><td>JSON</td></tr>
+    <tr><td>Skill drafts</td><td><code>.ara/skill-drafts/&lt;id&gt;.json</code></td><td>JSON</td></tr>
+    <tr><td>Agent profiles</td><td><code>.ara/agents/*.md</code></td><td>Markdown</td></tr>
+    <tr><td>Skills</td><td><code>skills/&lt;name&gt;/SKILL.md</code></td><td>Markdown</td></tr>
+  </table>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="features.html" class="btn btn-primary">All Features</a>
+    <a href="development.html" class="btn btn-secondary">Development</a>
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

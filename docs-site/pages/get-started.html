@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Started — Ara</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>Get Started</h1>
+  <p>Set up Ara on your machine in under 5 minutes.</p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li><a href="https://bun.sh" style="color:var(--accent)">Bun</a> v1.3+ — JavaScript runtime and package manager</li>
+    <li>Node.js 22+ (for compatibility with some dependencies)</li>
+    <li>Git (for cloning the repository)</li>
+  </ul>
+
+  <h2>Installation</h2>
+  <div class="step-list">
+    <ol>
+      <li><strong>Clone the repository</strong>
+        <pre><code>git clone &lt;repo-url&gt;
+cd ara</code></pre>
+      </li>
+      <li><strong>Install dependencies</strong>
+        <pre><code>bun install</code></pre>
+        <p>This installs all workspace packages and their dependencies.</p>
+      </li>
+      <li><strong>Configure environment</strong>
+        <pre><code>cp .env.example .env</code></pre>
+        <p>Edit <code>.env</code> with at least one LLM provider key:</p>
+        <pre><code>GEMINI_API_KEY=AIza...
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...</code></pre>
+      </li>
+      <li><strong>Configure GitHub (optional)</strong>
+        <p>Create <code>.ara/github.json</code>:</p>
+        <pre><code>{
+  "enabled": true,
+  "defaultOwner": "your-username",
+  "defaultRepo": "your-repo",
+  "tokenEnv": "GITHUB_TOKEN",
+  "allowedRepos": ["your-username/your-repo"]
+}</code></pre>
+        <p>Set your GitHub token: <code>export GITHUB_TOKEN=ghp_...</code></p>
+      </li>
+      <li><strong>Start the API server</strong>
+        <pre><code>bun run dev:api</code></pre>
+        <p>Starts the Hono REST/SSE server on port 3001.</p>
+      </li>
+      <li><strong>Start the TUI or use CLI</strong>
+        <pre><code># In another terminal:
+bun run dev:cli
+
+# Or use one-shot commands:
+ara doctor
+ara status
+ara chat "Explain the architecture"</code></pre>
+      </li>
+    </ol>
+  </div>
+
+  <h2>First Commands</h2>
+  <div class="section-block">
+    <pre><code>ara doctor              # System diagnostics
+ara status              # API server status
+ara permissions         # View permission mode
+ara chat "Hello"        # Chat with AI
+ara github status       # GitHub integration status
+ara mcp health          # MCP server health
+ara canvas list         # Canvas workspaces
+ara skills suggest      # Skill learning overview</code></pre>
+  </div>
+
+  <h2>Configuration</h2>
+  <div class="section-block">
+    <h3>MCP Servers</h3>
+    <p>Create <code>.ara/mcp.json</code> to register MCP tool servers:</p>
+    <pre><code>{
+  "servers": [{
+    "id": "my-server",
+    "name": "My MCP Server",
+    "type": "stdio",
+    "command": "node",
+    "args": ["server.js"],
+    "enabled": true
+  }]
+}</code></pre>
+  </div>
+  <div class="section-block">
+    <h3>Lifecycle Hooks</h3>
+    <p>Create <code>.ara/settings.json</code> to configure hooks:</p>
+    <pre><code>{
+  "hooks": [{
+    "name": "git-clean",
+    "type": "command",
+    "events": ["SessionStart"],
+    "command": "git diff-index --quiet HEAD --",
+    "timeoutMs": 3000
+  }]
+}</code></pre>
+  </div>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="cli.html" class="btn btn-primary">CLI Reference</a>
+    <a href="features.html" class="btn btn-secondary">All Features</a>
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

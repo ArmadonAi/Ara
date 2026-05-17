@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ara — Personal AI Control Plane</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="hero">
+    <div>
+      <span class="badge badge-blue">v0.1.0-RC1</span>
+      <span class="badge badge-green">318 Tests Passing</span>
+      <span class="badge badge-purple">TypeScript Strict</span>
+    </div>
+    <h1>Ara</h1>
+    <p>Local-first, secure personal AI control plane.<br>CLI · TUI · Web Dashboard · MCP · GitHub</p>
+    <a href="pages/get-started.html" class="btn btn-primary">Get Started</a>
+    <a href="pages/cli.html" class="btn btn-secondary">CLI Reference</a>
+  </div>
+
+  <h2>What Ara Does</h2>
+  <div class="card-grid">
+    <div class="card"><h3>Chat with AI</h3><p>Terminal or web interface with ReAct agent loop. Stream responses, approve tool calls.</p></div>
+    <div class="card"><h3>Safe Tools</h3><p>Permission engine with 5 modes, approval gate, checkpoints, and file locks.</p></div>
+    <div class="card"><h3>MCP Integration</h3><p>Connect external tool servers via stdio or HTTP. Full safety pipeline.</p></div>
+    <div class="card"><h3>GitHub Tools</h3><p>13 tools for issues, PRs, reviews, checks. All through approval gate.</p></div>
+    <div class="card"><h3>Skill Learning</h3><p>Detects repeated workflows, drafts reusable skills, version-managed.</p></div>
+    <div class="card"><h3>File Locks</h3><p>Read/write locks, deadlock detection, TTL expiry, persistent audit.</p></div>
+    <div class="card"><h3>Subagents</h3><p>Read-only delegated agents with parallel execution and result merging.</p></div>
+    <div class="card"><h3>Canvas Workspace</h3><p>Organize chats, files, tasks as visual nodes. API-first.</p></div>
+    <div class="card"><h3>Checkpoints</h3><p>Snapshot workspace before mutations. Diff and restore.</p></div>
+    <div class="card"><h3>Lifecycle Hooks</h3><p>18 event types. Run commands or HTTP calls on any lifecycle event.</p></div>
+  </div>
+
+  <h2>Quick Start</h2>
+  <div class="section-block">
+    <pre><code>git clone &lt;repo-url&gt;
+cd ara
+bun install
+cp .env.example .env
+bun run dev:api     # Start the API
+ara doctor          # Diagnostics
+ara chat "Hello"    # Chat with AI</code></pre>
+  </div>
+  <div style="text-align:center;margin:40px 0">
+    <a href="pages/get-started.html" class="btn btn-primary">Getting Started Guide</a>
+    <a href="pages/features.html" class="btn btn-secondary">All Features</a>
+    <a href="pages/release.html" class="btn btn-secondary">Release Notes</a>
+  </div>
+</main>
+<script src="include.js"></script>
+</body>
+</html>

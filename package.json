@@ -1,5 +1,6 @@
 {
   "name": "ara",
+  "version": "0.1.0",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -17,7 +18,8 @@
     "typecheck:cli": "bun run --cwd apps/cli typecheck",
     "test": "bun test",
     "lint": "tsc --noEmit",
-    "clean": "rm -rf apps/*/dist packages/*/dist node_modules"
+    "clean": "rm -rf apps/*/dist packages/*/dist node_modules",
+    "setup": "bun run scripts/setup.ts"
   },
   "devDependencies": {
     "bun-types": "^1.3.14",

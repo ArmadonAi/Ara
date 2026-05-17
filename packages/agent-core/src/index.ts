@@ -5,6 +5,7 @@ import type { SkillLoader } from '@ara/skills';
 import { ModelRouter } from '@ara/model-router';
 import { evaluatePermission, type PermissionMode } from '@ara/permissions';
 import { runHooks, createHookEventPayload } from '@ara/hooks';
+import { createCheckpoint, shouldCreateCheckpointBeforeTool } from '@ara/checkpoints';
 
 export class AgentRuntime {
   public permissionMode: PermissionMode = 'default';
@@ -284,6 +285,19 @@ General Guidelines:
             auditLogger: null,
             approvalChecker: null
           };
+
+          // Automatically create a checkpoint before executing a mutating tool!
+          if (shouldCreateCheckpointBeforeTool(toolName, input)) {
+            try {
+              await createCheckpoint(session.id, process.cwd(), `Automatically created before running tool: ${toolName}`, {
+                createdBy: 'agent',
+                beforeToolName: toolName,
+                beforeToolInput: JSON.stringify(input)
+              });
+            } catch (err) {
+              // Fail silently to keep execution moving
+            }
+          }
 
           const result = await tool.run(input, ctx);
 

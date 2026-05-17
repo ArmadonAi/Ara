@@ -1,0 +1,31 @@
+{
+  "servers": [
+    {
+      "id": "filesystem",
+      "name": "Local Filesystem Server",
+      "type": "stdio",
+      "command": "node",
+      "args": ["path/to/mcp-server.js"],
+      "cwd": ".",
+      "enabled": true,
+      "trusted": false,
+      "permissionMode": "default",
+      "allowedTools": [],
+      "deniedTools": [],
+      "env": {},
+      "timeoutMs": 15000
+    },
+    {
+      "id": "github-api",
+      "name": "GitHub MCP Server",
+      "type": "http",
+      "url": "http://localhost:8765/mcp",
+      "headers": {},
+      "enabled": false,
+      "trusted": false,
+      "permissionMode": "default",
+      "allowedTools": [],
+      "deniedTools": ["delete_repo"]
+    }
+  ]
+}

@@ -505,6 +505,623 @@ export const HooksCommand: SlashCommand = {
   }
 };
 
+export const CheckpointCommand: SlashCommand = {
+  name: '/checkpoint',
+  description: 'Manage checkpoints and workspace states',
+  usage: '/checkpoint [create <reason> | show <id> | diff <id>]',
+  category: 'system',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const sub = args[0]?.toLowerCase();
+    
+    if (sub === 'create') {
+      if (!ctx.sessionId) {
+        return { success: false, output: 'No active session loaded.' };
+      }
+      const reason = args.slice(1).join(' ') || 'Manual Checkpoint via Slash Command';
+      try {
+        const res = await fetch(`${ctx.apiBaseUrl}/api/sessions/${ctx.sessionId}/checkpoints`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const chk = await res.json() as any;
+        return {
+          success: true,
+          output: `✅ Checkpoint created successfully!\n   ID:        ${chk.id}\n   Reason:    ${chk.reason}\n   Time:      ${chk.createdAt}`
+        };
+      } catch (err: any) {
+        return { success: false, output: `Failed to create checkpoint: ${err.message}` };
+      }
+    }
+    
+    if (sub === 'show') {
+      const id = args[1];
+      if (!id) {
+        return { success: false, output: 'Usage: /checkpoint show <checkpointId>' };
+      }
+      try {
+        const res = await fetch(`${ctx.apiBaseUrl}/api/checkpoints/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const chk = await res.json() as any;
+        let out = `📌 Checkpoint: ${chk.id}\n`;
+        out += `=============================================================\n`;
+        out += `Session ID:      ${chk.sessionId}\n`;
+        out += `Created By:      ${chk.createdBy}\n`;
+        out += `Created At:      ${chk.createdAt}\n`;
+        out += `Reason:          ${chk.reason}\n`;
+        out += `Git HEAD Commit: ${chk.gitHead || 'n/a'}\n`;
+        out += `Message Count:   ${chk.messageCount}\n`;
+        out += `Snapshotted:     ${chk.files?.length || 0} files\n`;
+        out += `=============================================================`;
+        return { success: true, output: out };
+      } catch (err: any) {
+        return { success: false, output: `Failed to fetch checkpoint: ${err.message}` };
+      }
+    }
+    
+    if (sub === 'diff') {
+      const id = args[1];
+      if (!id) {
+        return { success: false, output: 'Usage: /checkpoint diff <checkpointId>' };
+      }
+      try {
+        const res = await fetch(`${ctx.apiBaseUrl}/api/checkpoints/${id}/diff`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const diff = await res.json() as any;
+        let out = `🔍 Checkpoint Diff relative to current workspace state: ${id}\n`;
+        out += `=============================================================\n`;
+        
+        const modified = diff.modified || [];
+        const created = diff.created || [];
+        const deleted = diff.deleted || [];
+        const skipped = diff.skipped || [];
+
+        if (modified.length === 0 && created.length === 0 && deleted.length === 0) {
+          out += '✨ Workspace is identical to checkpoint state.\n';
+        } else {
+          if (created.length > 0) {
+            out += '\n➕ Created Files:\n';
+            created.forEach((f: string) => { out += `  [+] ${f}\n`; });
+          }
+          if (modified.length > 0) {
+            out += '\n~ Modified Files:\n';
+            modified.forEach((f: string) => { out += `  [~] ${f}\n`; });
+          }
+          if (deleted.length > 0) {
+            out += '\n➖ Deleted Files:\n';
+            deleted.forEach((f: string) => { out += `  [-] ${f}\n`; });
+          }
+        }
+        
+        if (skipped.length > 0) {
+          out += `\n. Skipped (Large/Binary/Secrets): ${skipped.length} files\n`;
+        }
+        out += `=============================================================`;
+        return { success: true, output: out };
+      } catch (err: any) {
+        return { success: false, output: `Failed to diff checkpoint: ${err.message}` };
+      }
+    }
+    
+    return {
+      success: false,
+      output: `Unknown subcommand for /checkpoint.\nUsage: /checkpoint [create <reason> | show <id> | diff <id>]`
+    };
+  }
+};
+
+export const CheckpointsCommand: SlashCommand = {
+  name: '/checkpoints',
+  description: 'List all recent checkpoints in the workspace',
+  usage: '/checkpoints',
+  category: 'system',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(_args, ctx) {
+    try {
+      const res = await fetch(`${ctx.apiBaseUrl}/api/checkpoints`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json() as any[];
+      if (!list || list.length === 0) {
+        return { success: true, output: '\n🫙 No checkpoints found.\n' };
+      }
+      let out = `🔒 Recent Checkpoints:\n`;
+      out += `=============================================================\n`;
+      for (const chk of list) {
+        out += `📌 ID:        ${chk.id}\n`;
+        out += `   Session:   ${chk.sessionId}\n`;
+        out += `   Reason:    ${chk.reason}\n`;
+        out += `   Created By: ${chk.createdBy}\n`;
+        out += `   Time:      ${chk.createdAt}\n`;
+        out += `   Files:     ${chk.files?.length || 0} snapshotted\n`;
+        out += `-------------------------------------------------------------\n`;
+      }
+      return { success: true, output: out };
+    } catch (err: any) {
+      return { success: false, output: `Failed to list checkpoints: ${err.message}` };
+    }
+  }
+};
+
+export const RestoreCommand: SlashCommand = {
+  name: '/restore',
+  description: 'Restore code files and/or session history to a checkpoint state',
+  usage: '/restore <checkpointId> [code_only | conversation_only | both]',
+  category: 'system',
+  requiresApi: true,
+  dangerLevel: 'dangerous',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const id = args[0];
+    if (!id) {
+      return { success: false, output: '❌ Usage: /restore <checkpointId> [code_only | conversation_only | both]' };
+    }
+    const mode = args[1]?.toLowerCase() || 'code_only';
+    if (!['code_only', 'conversation_only', 'both'].includes(mode)) {
+      return { success: false, output: '❌ Error: Invalid mode. Choose from: code_only, conversation_only, both' };
+    }
+    
+    try {
+      const res = await fetch(`${ctx.apiBaseUrl}/api/checkpoints/${id}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const result = await res.json() as any;
+      let out = `✅ Restore successful!\n`;
+      if (result.restoredFiles && result.restoredFiles.length > 0) {
+        out += `   Restored Files (${result.restoredFiles.length}):\n`;
+        result.restoredFiles.forEach((f: string) => { out += `     - ${f}\n`; });
+      }
+      if (result.messageCount !== undefined) {
+        out += `   Conversation rewound to ${result.messageCount} messages.\n`;
+      }
+      return { success: true, output: out };
+    } catch (err: any) {
+      return { success: false, output: `Restore failed: ${err.message}` };
+    }
+  }
+};
+
+export const McpHelpCommand: SlashCommand = {
+  name: '/mcp',
+  description: 'MCP external tools management. Usage: /mcp servers | /mcp tools [serverId] | /mcp health | /mcp start <id> | /mcp stop <id>',
+  usage: '/mcp [servers | tools [serverId] | health | start <id> | stop <id>]',
+  category: 'mcp',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const sub = args[0]?.toLowerCase();
+    try {
+      if (sub === 'servers') {
+        const res = await fetch(`${ctx.apiBaseUrl}/api/mcp/servers`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json() as any;
+        const servers = data.servers || [];
+        let out = '🔌 MCP Servers:\n';
+        out += '=============================================================\n';
+        if (servers.length === 0) {
+          out += 'No MCP servers configured.\n';
+        } else {
+          for (const s of servers) {
+            out += `  ${s.id}  ${s.enabled ? 'enabled' : 'disabled'}  ${s.trusted ? 'trusted' : 'untrusted'}  mode:${s.permissionMode || 'default'}  ${s.type}\n`;
+          }
+        }
+        return { success: true, output: out };
+      }
+
+      if (sub === 'tools') {
+        const serverId = args[1];
+        const url = serverId
+          ? `${ctx.apiBaseUrl}/api/mcp/servers/${serverId}/tools`
+          : `${ctx.apiBaseUrl}/api/mcp/tools`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json() as any;
+        const tools = data.tools || [];
+        let out = `🔧 MCP Tools${serverId ? ` for server "${serverId}"` : ''}:\n`;
+        out += '=============================================================\n';
+        if (tools.length === 0) {
+          out += 'No tools discovered.\n';
+        } else {
+          for (const t of tools) {
+            const fn = t.fullName || `mcp.${t.serverId}.${t.name}`;
+            out += `  ${fn}  danger:${t.dangerLevel}  mutating:${t.mutating ? 'yes' : 'no'}\n`;
+          }
+        }
+        return { success: true, output: out };
+      }
+
+      if (sub === 'health') {
+        const res = await fetch(`${ctx.apiBaseUrl}/api/mcp/health`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json() as any;
+        const results = data.results || [];
+        let out = '💓 MCP Health:\n';
+        out += '=============================================================\n';
+        if (results.length === 0) {
+          out += 'No servers running.\n';
+        } else {
+          for (const r of results) {
+            out += `  ${r.serverId}  state:${r.state}  tools:${r.toolCount}  error:${r.lastError || 'none'}\n`;
+          }
+        }
+        return { success: true, output: out };
+      }
+
+      if (sub === 'start' && args[1]) {
+        const id = args[1];
+        const res = await fetch(`${ctx.apiBaseUrl}/api/mcp/servers/${id}/start`, { method: 'POST' });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const result = await res.json() as any;
+        if (result.ok) {
+          return { success: true, output: `✅ Server "${id}" started. ${(result.tools || []).length} tools discovered.` };
+        }
+        return { success: false, output: `❌ Failed: ${result.error}` };
+      }
+
+      if (sub === 'stop' && args[1]) {
+        const id = args[1];
+        const res = await fetch(`${ctx.apiBaseUrl}/api/mcp/servers/${id}/stop`, { method: 'POST' });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const result = await res.json() as any;
+        if (result.ok) {
+          return { success: true, output: `✅ Server "${id}" stopped.` };
+        }
+        return { success: false, output: `❌ Failed: ${result.error}` };
+      }
+
+      // Default: show help
+      return {
+        success: true,
+        output: '🔌 MCP Commands:\n  /mcp servers              - List servers\n  /mcp tools [serverId]    - List tools\n  /mcp health              - Health check\n  /mcp start <id>          - Start server\n  /mcp stop <id>           - Stop server'
+      };
+    } catch (err: any) {
+      return { success: false, output: `Error: ${err.message}` };
+    }
+  },
+};
+
+export const GitHubCommand: SlashCommand = {
+  name: '/github',
+  description: 'GitHub integration. Usage: /github status | /github issues [owner/repo] | /github prs [owner/repo] | /github checks <ref> [owner/repo]',
+  usage: '/github [status | issues | prs | checks <ref>]',
+  category: 'github',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const sub = args[0]?.toLowerCase();
+    try {
+      const base = ctx.apiBaseUrl;
+
+      if (!sub || sub === 'status') {
+        const res = await fetch(`${base}/api/github`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const d = await res.json() as any;
+        return {
+          success: true,
+          output: `🔗 GitHub: ${d.enabled ? 'Enabled' : 'Disabled'} | Token: ${d.tokenPresent ? 'Yes' : 'No'} | Read-only: ${d.readOnly ? 'Yes' : 'No'} | Default: ${d.defaultOwner || '?'}/${d.defaultRepo || '?'}`
+        };
+      }
+
+      if (sub === 'issues') {
+        const ownerRepo = args[1] || '';
+        const [owner = '', repo = ''] = ownerRepo.split('/');
+        const res = await fetch(`${base}/api/github/repos/${owner}/${repo}/issues`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const d = await res.json() as any;
+        if (d.ok) return { success: true, output: `📋 Issues:\n${d.output?.slice(0, 1000) || 'No output'}` };
+        return { success: false, output: d.error || 'Failed' };
+      }
+
+      if (sub === 'prs') {
+        const ownerRepo = args[1] || '';
+        const [owner = '', repo = ''] = ownerRepo.split('/');
+        const res = await fetch(`${base}/api/github/repos/${owner}/${repo}/pulls`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const d = await res.json() as any;
+        if (d.ok) return { success: true, output: `🔄 PRs:\n${d.output?.slice(0, 1000) || 'No output'}` };
+        return { success: false, output: d.error || 'Failed' };
+      }
+
+      if (sub === 'checks' && args[1]) {
+        const ref = args[1];
+        const ownerRepo = args[2] || '';
+        const [owner = '', repo = ''] = ownerRepo.split('/');
+        const res = await fetch(`${base}/api/github/repos/${owner}/${repo}/check-runs/${ref}`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const d = await res.json() as any;
+        if (d.ok) return { success: true, output: `✅ Checks for ${ref}:\n${d.output?.slice(0, 1000) || 'No output'}` };
+        return { success: false, output: d.error || 'Failed' };
+      }
+
+      return {
+        success: true,
+        output: '🔗 GitHub Commands:\n  /github status                - Status\n  /github issues [o/r]         - List issues\n  /github prs [o/r]            - List PRs\n  /github checks <ref> [o/r]   - List checks'
+      };
+    } catch (err: any) {
+      return { success: false, output: `Error: ${err.message}` };
+    }
+  },
+};
+
+export const LockCommand: SlashCommand = {
+  name: '/locks',
+  description: 'File lock management. Usage: /locks cleanup | /locks list',
+  usage: '/locks [cleanup | list]',
+  category: 'system',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const sub = args[0]?.toLowerCase();
+    const base = ctx.apiBaseUrl;
+    try {
+      if (sub === 'cleanup') {
+        const res = await fetch(`${base}/api/locks/cleanup`, { method: 'POST' });
+        const d = await res.json() as any;
+        return { success: true, output: `🧹 Expired locks cleaned: ${d.cleaned || 0}` };
+      }
+      if (sub === 'list') {
+        const res = await fetch(`${base}/api/locks`);
+        const d = await res.json() as any;
+        const locks = d.locks || [];
+        if (locks.length === 0) return { success: true, output: '🔒 No active locks.' };
+        let out = '🔒 Active Locks:\n';
+        for (const l of locks) {
+          out += `  ${l.id.slice(0, 16)}  ${l.mode}  ${l.path}  owner:${l.agentName || l.sessionId}\n`;
+        }
+        return { success: true, output };
+      }
+      return { success: true, output: '🔒 Lock Commands:\n  /locks list         - List active locks\n  /locks cleanup      - Clean expired locks' };
+    } catch (err: any) {
+      return { success: false, output: `Error: ${err.message}` };
+    }
+  },
+};
+
+export const ParallelCommand: SlashCommand = {
+  name: '/parallel',
+  description: 'Parallel subagent runs. Usage: /parallel-runs | /parallel <agents> <task>',
+  usage: '/parallel <agent1,agent2,...> <task>',
+  category: 'subagents',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const base = ctx.apiBaseUrl;
+    if (args.length < 2) {
+      return { success: true, output: 'Usage: /parallel <agent1,agent2> <task>' };
+    }
+    const agents = args[0]!.split(',').map(a => a.trim()).filter(Boolean);
+    const task = args.slice(1).join(' ');
+    try {
+      const profileObjects = agents.map(name => ({ name, task }));
+      const res = await fetch(`${base}/api/subagents/parallel-runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profiles: profileObjects, sessionId: 'slash' })
+      });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const run = await res.json() as any;
+      return { success: true, output: `🚀 Parallel run started: ${run.id}\n  Agents: ${agents.join(', ')}\n  Status: ${run.status}` };
+    } catch (err: any) {
+      return { success: false, output: `Error: ${err.message}` };
+    }
+  },
+};
+
+export const ParallelRunsCommand: SlashCommand = {
+  name: '/parallel-runs',
+  description: 'List parallel subagent runs',
+  usage: '/parallel-runs',
+  category: 'subagents',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(_args, ctx) {
+    try {
+      const res = await fetch(`${ctx.apiBaseUrl}/api/subagents/parallel-runs`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json() as any;
+      const runs = data.runs || [];
+      if (runs.length === 0) return { success: true, output: 'No parallel runs.' };
+      let out = '🔄 Parallel Runs:\n';
+      for (const r of runs) {
+        out += `  ${r.id.slice(0, 16)}  status:${r.status}  profiles:${(r.profiles || []).length}  results:${(r.results || []).length}\n`;
+      }
+      return { success: true, output };
+    } catch (err: any) {
+      return { success: false, output: `Error: ${err.message}` };
+    }
+  },
+};
+
+
+export const CanvasCommand: SlashCommand = {
+  name: '/canvas',
+  description: 'Canvas workspace management. Usage: /canvas list | /canvas create <name> | /canvas show <id> | /canvas export <id>',
+  usage: '/canvas [list | create <name> | show <id> | export <id>]',
+  category: 'canvas',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const sub = args[0]?.toLowerCase();
+    const base = ctx.apiBaseUrl;
+    try {
+      if (!sub || sub === 'list') {
+        const res = await fetch(base + '/api/canvas/workspaces');
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const d = await res.json() as any;
+        const ws = d.workspaces || [];
+        if (ws.length === 0) return { success: true, output: 'No canvas workspaces. Create one: /canvas create "My Workspace"' };
+        let out = '';
+        for (const w of ws) {
+          out += '  ' + (w.id || '').slice(0, 12) + '  ' + (w.name || '').slice(0, 30) + '  ' + (w.createdAt || '').slice(0, 10);
+        }
+        return { success: true, output };
+      }
+      if (sub === 'create') {
+        const name = args.slice(1).join(' ');
+        if (!name) return { success: false, output: 'Usage: /canvas create <workspace name>' };
+        const res = await fetch(base + '/api/canvas/workspaces', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const result = await res.json() as any;
+        return { success: true, output: 'Workspace created: ' + result.id };
+      }
+      if (sub === 'show' && args[1]) {
+        const id = args[1];
+        const res = await fetch(base + '/api/canvas/workspaces/' + id);
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const data = await res.json() as any;
+        const ws = data.workspace || {};
+        const nodes = data.nodes || [];
+        const edges = data.edges || [];
+        return { success: true, output: 'Workspace: ' + (ws.name || '') + '  Nodes: ' + nodes.length + '  Edges: ' + edges.length };
+      }
+      if (sub === 'export' && args[1]) {
+        const id = args[1];
+        const res = await fetch(base + '/api/canvas/workspaces/' + id + '/export');
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const data = await res.json() as any;
+        return { success: true, output: 'Workspace exported: ' + (data.nodes?.length || 0) + ' nodes, ' + (data.edges?.length || 0) + ' edges' };
+      }
+      return {
+        success: true,
+        output: 'Canvas Commands: /canvas list | /canvas create <name> | /canvas show <id> | /canvas export <id>'
+      };
+    } catch (err: any) {
+      return { success: false, output: 'Error: ' + err.message };
+    }
+  },
+};
+
+
+export const SkillsLearningCommand: SlashCommand = {
+  name: '/skills',
+  description: 'Skill learning: detect workflows, manage drafts. Usage: /skills suggest | /skills drafts | /skills approve <id> | /skills reject <id>',
+  usage: '/skills [suggest | drafts | approve <id> | reject <id> | stats]',
+  category: 'skills',
+  requiresApi: true,
+  dangerLevel: 'write',
+  handlerType: 'api',
+  async run(args, ctx) {
+    const sub = args[0]?.toLowerCase();
+    const base = ctx.apiBaseUrl;
+    try {
+      if (!sub || sub === 'suggest') {
+        const res = await fetch(base + '/api/skill-learning');
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const d = await res.json() as any;
+        return { success: true, output: 'Learning Loop: ' + (d.workflowCount || 0) + ' workflows, ' + (d.repeatedCount || 0) + ' repeated, ' + (d.draftCount || 0) + ' drafts' };
+      }
+
+      if (sub === 'drafts' && !args[1]) {
+        const res = await fetch(base + '/api/skill-learning/drafts');
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const data = await res.json() as any;
+        const drafts = data.drafts || [];
+        if (drafts.length === 0) return { success: true, output: 'No skill drafts. Run /skills suggest' };
+        let out = 'Skill Drafts:\n';
+        for (const d of drafts) {
+          out += '  ' + (d.id || '').slice(0, 12) + '  ' + (d.status || '').padEnd(10) + '  ' + (d.proposedSkillName || '').slice(0, 20) + '  ' + Math.round((d.confidence || 0) * 100) + '%\n';
+        }
+        return { success: true, output };
+      }
+
+      if (sub === 'approve' && args[1]) {
+        const id = args[1];
+        const res = await fetch(base + '/api/skill-learning/drafts/' + id + '/approve', { method: 'POST' });
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const result = await res.json() as any;
+        if (result.ok) return { success: true, output: 'Draft approved: ' + result.skillName + ' v' + result.version };
+        return { success: false, output: result.error || 'Approval failed' };
+      }
+
+      if (sub === 'reject' && args[1]) {
+        const id = args[1];
+        const res = await fetch(base + '/api/skill-learning/drafts/' + id + '/reject', { method: 'POST' });
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const result = await res.json() as any;
+        if (result.ok) return { success: true, output: 'Draft rejected: ' + id };
+        return { success: false, output: result.error || 'Rejection failed' };
+      }
+
+      if (sub === 'stats') {
+        const res = await fetch(base + '/api/skill-learning/stats');
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const data = await res.json() as any;
+        const stats = data.stats || [];
+        if (stats.length === 0) return { success: true, output: 'No usage stats recorded.' };
+        let out = 'Skill Stats:\n';
+        for (const s of stats) {
+          out += '  ' + (s.skillName || '').padEnd(20) + ' uses:' + (s.useCount || 0) + ' ok:' + (s.successCount || 0) + ' fail:' + (s.failureCount || 0) + '\n';
+        }
+        return { success: true, output };
+      }
+
+      return {
+        success: true,
+        output: 'Skills commands: /skills suggest | /skills drafts | /skills approve <id> | /skills reject <id> | /skills stats'
+      };
+    } catch (err: any) {
+      return { success: false, output: 'Error: ' + err.message };
+    }
+  },
+};
+
+export const RewindCommand: SlashCommand = {
+  name: '/rewind',
+  description: 'Print recent checkpoints and provide exact restore instructions',
+  usage: '/rewind',
+  category: 'system',
+  requiresApi: true,
+  dangerLevel: 'safe',
+  handlerType: 'api',
+  async run(_args, ctx) {
+    try {
+      const res = await fetch(`${ctx.apiBaseUrl}/api/checkpoints`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json() as any[];
+      if (!list || list.length === 0) {
+        return { success: true, output: '\n🫙 No checkpoints available to rewind.\n' };
+      }
+      let out = `⏪ Rewind / Rollback Helper:\n`;
+      out += `=============================================================\n`;
+      out += `To rewind to a checkpoint, execute the corresponding command below:\n\n`;
+      for (const chk of list.slice(0, 10)) {
+        out += `📌 Checkpoint ID: ${chk.id}\n`;
+        out += `   Reason:        ${chk.reason}\n`;
+        out += `   Created At:    ${chk.createdAt}\n`;
+        out += `   Restore Commands:\n`;
+        out += `     >  /restore ${chk.id} code_only          (Restore workspace files only)\n`;
+        out += `     >  /restore ${chk.id} conversation_only  (Rewind chat messages only)\n`;
+        out += `     >  /restore ${chk.id} both               (Restore both files & chat)\n`;
+        out += `-------------------------------------------------------------\n`;
+      }
+      return { success: true, output: out };
+    } catch (err: any) {
+      return { success: false, output: `Failed to get rewind checkpoints list: ${err.message}` };
+    }
+  }
+};
+
 // Create a helper registry factory with all built-in commands pre-registered
 export function createDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
@@ -517,5 +1134,16 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register(SkillsCommand);
   registry.register(PermissionsCommand);
   registry.register(HooksCommand);
+  registry.register(CheckpointCommand);
+  registry.register(CheckpointsCommand);
+  registry.register(RestoreCommand);
+  registry.register(SkillsLearningCommand);
+  registry.register(RewindCommand);
+  registry.register(McpHelpCommand);
+  registry.register(GitHubCommand);
+  registry.register(LockCommand);
+  registry.register(ParallelCommand);
+  registry.register(ParallelRunsCommand);
+  registry.register(CanvasCommand);
   return registry;
 }

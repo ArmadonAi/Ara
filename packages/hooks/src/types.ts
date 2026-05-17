@@ -10,7 +10,27 @@ export type HookEventName =
   | 'ApprovalResolved'
   | 'Stop'
   | 'CheckpointCreated'
-  | 'SessionEnd';
+  | 'SessionEnd'
+  // MCP lifecycle events
+  | 'MCPServerStart'
+  | 'MCPServerStop'
+  | 'MCPToolDiscovered'
+  | 'MCPToolCallStart'
+  | 'MCPToolCallEnd'
+  | 'MCPToolCallFailed'
+  // GitHub lifecycle events
+  | 'GitHubActionStart'
+  | 'GitHubActionEnd'
+  | 'GitHubActionFailed'
+  | 'GitHubWriteApprovalRequested'
+  // Lock and parallel subagent events
+  | 'LockAcquired'
+  | 'LockReleased'
+  | 'LockConflict'
+  | 'LockExpired'
+  | 'ParallelSubagentsStart'
+  | 'ParallelSubagentsComplete'
+  | 'ParallelSubagentsFailed';
 
 export interface HookEventPayload {
   event: HookEventName;

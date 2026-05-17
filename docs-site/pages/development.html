@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Development — Ara</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>Development Guide</h1>
+  <p>How to set up, build, test, and extend Ara.</p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li><a href="https://bun.sh">Bun</a> v1.3+</li>
+    <li>Node.js 22+</li>
+  </ul>
+
+  <h2>Setup</h2>
+  <div class="section-block">
+    <pre><code>git clone &lt;repo-url&gt;
+cd ara
+bun install
+cp .env.example .env</code></pre>
+  </div>
+
+  <h2>Development Commands</h2>
+  <div class="section-block">
+    <pre><code># Start all services concurrently
+bun run dev
+
+# Start individual services
+bun run dev:api     # Hono API on :3001
+bun run dev:web     # Vite frontend on :5173
+bun run dev:worker  # Background cron
+bun run dev:cli     # CLI / TUI
+
+# Build
+bun run build       # All apps
+bun run build:cli   # CLI binary only
+
+# Test
+bun test                     # All 318 tests
+bun test "github"            # GitHub package tests
+bun test "skill_learning"    # Skill learning tests
+bun test tests/ara.test.ts   # Single test file
+
+# Typecheck & lint
+bun run typecheck
+bun run lint</code></pre>
+  </div>
+
+  <h2 id="structure">Project Structure</h2>
+  <div class="section-block">
+    <pre><code>ara/
+  apps/        — Application packages
+    api/       Hono REST/SSE server + SQLite
+    cli/       Commander.js CLI + React Ink TUI
+    web/       React/Vite dashboard SPA
+    worker/    Cron scheduler
+
+  packages/    — Library packages (16)
+    shared/        Core types, Zod schemas
+    agent-core/    ReAct loop orchestrator
+    tools/         8 built-in tools
+    permissions/   5 modes, 21 deny rules
+    hooks/         18 lifecycle event types
+    model-router/  LLM providers
+    memory/        Markdown memory store
+    skills/        Skill procedure loader
+    commands/      Slash command registry
+    checkpoints/   Workspace snapshots
+    subagents/     Isolated agent execution
+    locks/         File locking system
+    mcp/           MCP client/server
+    github/        GitHub REST integration
+    canvas/        Workspace node model
+    skill-learning/Workflow detection
+
+  docs/        — Documentation
+  skills/      — Skill procedure sheets
+  memory/      — Memory files
+  tests/       — Integration tests
+  .ara/        — Runtime data (gitignored)</code></pre>
+  </div>
+
+  <h2 id="testing">Testing Guidelines</h2>
+  <ul>
+    <li>Use <code>bun:test</code> (not vitest)</li>
+    <li>Mock external APIs — no real credentials in tests</li>
+    <li>Keep tests deterministic</li>
+    <li>Test failure paths (permission denied, missing config, network errors)</li>
+    <li>No secrets in test files</li>
+  </ul>
+
+  <h2>Code Style</h2>
+  <ul>
+    <li>TypeScript strict mode</li>
+    <li>ESM modules (<code>"type": "module"</code>)</li>
+    <li>No ESLint — use <code>tsc --noEmit</code></li>
+    <li>Zod for runtime validation</li>
+    <li>Async/await preferred</li>
+    <li>All internal deps use <code>workspace:*</code></li>
+  </ul>
+
+  <h2>Adding a New Package</h2>
+  <ol>
+    <li>Create <code>packages/&lt;name&gt;/</code> with <code>package.json</code>, <code>tsconfig.json</code>, <code>src/index.ts</code></li>
+    <li>Use <code>workspace:*</code> for internal dependencies</li>
+    <li>Add to root <code>tsconfig.json</code> references</li>
+    <li>Run <code>bun install --cwd packages/&lt;name&gt;</code></li>
+    <li>Import in API routes as needed</li>
+  </ol>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

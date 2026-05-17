@@ -194,6 +194,44 @@ Updates model configuration settings for a singular chat session only (Session c
 
 ---
 
+## 🔒 File Locks
+
+### `GET /api/locks`
+List locks. Optional query param: `?status=active|released|expired`.
+
+### `POST /api/locks`
+Acquire a lock. Body: `{ sessionId, path, mode: "read"|"write", runId?, agentName?, reason?, ttlMs? }`
+
+Returns lock result with conflict info if blocked.
+
+### `POST /api/locks/:id/release`
+Release a specific lock by ID.
+
+### `POST /api/locks/:id/force-release`
+Force-release a lock. Body: `{ reason }` (required).
+
+### `POST /api/locks/cleanup`
+Clean up expired locks. Returns `{ cleaned: number }`.
+
+### `GET /api/locks/audit`
+View lock audit records. Query: `?limit=100`.
+
+## 🖇️ Parallel Subagent Runs
+
+### `POST /api/subagents/parallel-runs`
+Start parallel subagents. Body: `{ profiles: [{name, task}], sessionId, maxConcurrency?, task? }`
+
+Returns the parallel run with ID and status.
+
+### `GET /api/subagents/parallel-runs`
+List all parallel runs.
+
+### `GET /api/subagents/parallel-runs/:id`
+Get a specific parallel run.
+
+### `POST /api/subagents/parallel-runs/:id/cancel`
+Cancel a running parallel run.
+
 ## 🔒 Workspace Checkpoints & Rewind
 
 Checkpoints capture the full state of the workspace (files + session transcript) at a point in time, enabling safe code and conversation rewind.

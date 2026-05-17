@@ -12,6 +12,14 @@
     { "path": "./packages/skills" },
     { "path": "./packages/model-router" },
     { "path": "./packages/commands" },
+    { "path": "./packages/hooks" },
+    { "path": "./packages/subagents" },
+    { "path": "./packages/checkpoints" },
+    { "path": "./packages/mcp" },
+    { "path": "./packages/github" },
+    { "path": "./packages/locks" },
+    { "path": "./packages/canvas" },
+    { "path": "./packages/skill-learning" },
     { "path": "./tests" }
   ]
 }

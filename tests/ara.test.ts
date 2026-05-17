@@ -186,6 +186,7 @@ Review comments
   // 2. Tool Registry & Path Traversal & Safety Blocking (Phase D)
   // =========================================================
   describe('Phase D: Tool Safety & Security Constraints', () => {
+    process.env.ARA_ALLOW_LOCK_FALLBACK = '1';
     const mockCtx: ToolContext = {
       sessionId: 'test-session',
       userId: 'test-user',

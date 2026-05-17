@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Release — Ara v0.1.0</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>Release Notes — v0.1.0</h1>
+  <p><span class="badge badge-blue">Release Candidate</span> <span class="badge badge-green">318 Tests</span> <span class="badge badge-purple">TypeScript Strict</span></p>
+
+  <h2>What Ara Is</h2>
+  <p>Ara is a local-first personal AI control plane. It gives you a secure, auditable runtime for AI agent workflows — with tools, permissions, external service integration, and full control over what the agent can do.</p>
+
+  <h2>Recommended Use</h2>
+  <div class="card-grid">
+    <div class="card">
+      <h3>Suitable For</h3>
+      <ul>
+        <li>Personal local development</li>
+        <li>Single-user AI workspace automation</li>
+        <li>MCP tool server experimentation</li>
+        <li>GitHub read/write with approval</li>
+        <li>Learning from repeated workflows</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Not Yet Suitable</h3>
+      <ul>
+        <li>Multi-user environments</li>
+        <li>Public internet exposure</li>
+        <li>Production CI/CD pipelines</li>
+        <li>Untrusted third-party access</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="changelog">Changelog</h2>
+  <div class="section-block">
+    <h3>Added</h3>
+    <ul>
+      <li>CLI/TUI Gateway — Commander.js with 40+ commands, React Ink TUI with 13 tabs</li>
+      <li>Memory & Skills — Markdown-based memory store and YAML frontmatter skill loader</li>
+      <li>Slash Commands — In-chat commands for all subsystems</li>
+      <li>Permission Engine — 5 security modes, 21 default deny rules</li>
+      <li>Lifecycle Hooks — 18 event types across all subsystems</li>
+      <li>MCP / External Tools — stdio and HTTP transports with full safety pipeline</li>
+      <li>GitHub Integration — 13 tools with token-redacted audit</li>
+      <li>File Locks — Read/write locking with deadlock detection</li>
+      <li>Canvas Workspace — 13 node types, 5 edge types, file-based storage</li>
+      <li>Skill Learning — Workflow detection, draft generation, approval/versioning</li>
+      <li>Checkpoints — Workspace snapshots with diff and restore</li>
+      <li>Subagents — Read-only profiles with parallel scheduling</li>
+    </ul>
+  </div>
+  <div class="section-block">
+    <h3>Security</h3>
+    <ul>
+      <li>Fail-closed lock fallback — mutating operations blocked if lock module unavailable</li>
+      <li>File locks acquired before write_file/edit_file and mutating run_shell</li>
+      <li>GitHub tokens read from env var only, redacted in all logs</li>
+      <li>MCP audit redacts API keys, PATs, and credentials</li>
+      <li>Subagents cannot write, self-approve, or start/stop MCP servers</li>
+    </ul>
+  </div>
+
+  <h2 id="limitations">Known Limitations</h2>
+  <table>
+    <tr><th>Area</th><th>Limitation</th></tr>
+    <tr><td>Storage</td><td>SQLite only — not designed for multi-user or high concurrency</td></tr>
+    <tr><td>Storage</td><td>JSONL files grow unbounded — no automatic compaction</td></tr>
+    <tr><td>MCP</td><td>No streaming tool calls — tools execute synchronously</td></tr>
+    <tr><td>GitHub</td><td>No OAuth — token-based auth only</td></tr>
+    <tr><td>GitHub</td><td>No merge/close tools — write actions limited to issues/comments/reviews</td></tr>
+    <tr><td>Subagents</td><td>Write-enabled parallel subagents disabled</td></tr>
+    <tr><td>Canvas</td><td>No drag-and-drop — nodes use absolute positioning via API</td></tr>
+    <tr><td>Skill Learning</td><td>Draft body is tool-sequence-based — no semantic transcript content</td></tr>
+    <tr><td>General</td><td>Single-user mode — not hardened for public internet</td></tr>
+    <tr><td>General</td><td>No built-in HTTPS or authentication</td></tr>
+  </table>
+
+  <h2>Verification</h2>
+  <div class="section-block">
+    <table>
+      <tr><th>Check</th><th>Result</th></tr>
+      <tr><td><code>bun test</code></td><td>318 pass, 0 fail (18 files, 790 expect)</td></tr>
+      <tr><td><code>bun run typecheck</code></td><td>Clean (0 errors)</td></tr>
+      <tr><td><code>bun run build</code></td><td>API: OK, Web: OK, CLI: 1.64 MB</td></tr>
+      <tr><td><code>bun run build:cli</code></td><td>137 modules bundled</td></tr>
+    </table>
+  </div>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="get-started.html" class="btn btn-primary">Get Started</a>
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

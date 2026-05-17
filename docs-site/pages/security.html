@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security — Ara</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>Security Model</h1>
+  <p>Ara is designed with security as a core architectural constraint. Every tool call goes through a multi-layer safety pipeline.</p>
+
+  <h2 id="pipeline">Safety Pipeline</h2>
+  <div class="section-block">
+    <pre><code>Tool Call
+  → Permission Engine (evaluatePermission)
+    → 5 modes: plan, default, accept-edits, auto-safe, danger-review
+    → 21 default deny rules (.env, ssh, pem, rm -rf, sudo)
+    → Path safety (CWD confinement, symlink prevention)
+  → Approval Gate (if ask decision)
+    → write_file, edit_file, run_shell, GitHub writes require approval
+    → Rejected approvals never execute
+  → Checkpoint (if mutating)
+    → File backup before write
+    → Session snapshot before mutation
+  → File Lock (if mutating)
+    → Exclusive write lock prevents concurrent conflicts
+    → Deadlock detection, TTL expiry
+  → Hook Lifecycle
+    → PreToolUse, PostToolUse, ToolFailed
+  → Audit Log
+    → Every tool call recorded with secret redaction</code></pre>
+  </div>
+
+  <h2>Permission Modes</h2>
+  <table>
+    <tr><th>Mode</th><th>Behavior</th></tr>
+    <tr><td><code>plan</code></td><td>All tool calls ask for approval</td></tr>
+    <tr><td><code>default</code></td><td>Safe tools allowed; write/dangerous ask</td></tr>
+    <tr><td><code>accept-edits</code></td><td>File reads allowed; mutating writes ask</td></tr>
+    <tr><td><code>auto-safe</code></td><td>Only safe tools allowed</td></tr>
+    <tr><td><code>danger-review</code></td><td>All tools require review</td></tr>
+  </table>
+
+  <h2>Default Deny Rules</h2>
+  <div class="section-block">
+    <h3>Credential Files</h3>
+    <p><code>.env*</code>, <code>.ssh/**</code>, <code>.aws/**</code>, <code>.config/gcloud/**</code></p>
+    <h3>Private Keys</h3>
+    <p><code>*.pem</code>, <code>*.key</code>, <code>id_rsa</code>, <code>id_ecdsa</code>, <code>id_ed25519</code></p>
+    <h3>Dangerous Commands</h3>
+    <p><code>rm -rf</code>, <code>sudo</code>, <code>curl|sh</code>, reverse shells, <code>DROP TABLE</code>, <code>printenv</code></p>
+  </div>
+
+  <h2>MCP Safety</h2>
+  <ul>
+    <li>Untrusted servers: shell-like tools denied, mutating tools ask, file tools ask</li>
+    <li>Trusted bypass after hard denies (allowlist, secrets)</li>
+    <li>Full process.env never passed to MCP servers</li>
+    <li>API key patterns redacted in audit</li>
+  </ul>
+
+  <h2>GitHub Safety</h2>
+  <ul>
+    <li>Token read from env var only — never stored in config</li>
+    <li>Token redacted in all audit logs</li>
+    <li>Write actions require approval</li>
+    <li>Subagents cannot write</li>
+    <li>Repo allowlist enforcement</li>
+  </ul>
+
+  <h2>File Lock Safety</h2>
+  <ul>
+    <li>Write lock is exclusive — blocks other writes and reads</li>
+    <li>Stale locks expire automatically (configurable TTL)</li>
+    <li>Deadlock detection prevents circular waits</li>
+    <li>Force release requires explicit reason</li>
+    <li>Fail-closed by default: <code>ARA_ALLOW_LOCK_FALLBACK=1</code> to bypass</li>
+  </ul>
+
+  <h2>Audit Coverage</h2>
+  <ul>
+    <li>All tool calls audited with status and timestamps</li>
+    <li>MCP audit with API key redaction (<code>sk-*</code>, <code>AIza*</code>, <code>ghp_*</code>, <code>glpat-*</code>)</li>
+    <li>GitHub audit with token redaction</li>
+    <li>Lock events: acquire, release, conflict, expiry, force-release</li>
+    <li>Canvas workspace/node/edge CRUD</li>
+    <li>Hook executions</li>
+    <li>Skill learning workflow detection and draft lifecycle</li>
+  </ul>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="features.html" class="btn btn-primary">All Features</a>
+    <a href="cli.html" class="btn btn-secondary">CLI Reference</a>
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

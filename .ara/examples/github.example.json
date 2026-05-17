@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "defaultOwner": "your-github-username",
+  "defaultRepo": "your-repo-name",
+  "apiBaseUrl": "https://api.github.com",
+  "tokenEnv": "GITHUB_TOKEN",
+  "permissionMode": "default",
+  "allowedRepos": ["your-github-username/your-repo-name"],
+  "readOnly": false
+}

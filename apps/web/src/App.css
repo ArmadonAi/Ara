@@ -586,3 +586,214 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Onboarding Overlay Styles */
+.onboarding-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(4, 3, 10, 0.85);
+  backdrop-filter: blur(20px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.onboarding-card {
+  width: 90%;
+  max-width: 580px;
+  background: rgba(18, 16, 32, 0.75);
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  box-shadow: 0 0 40px rgba(0, 242, 254, 0.15);
+  border-radius: 16px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  text-align: center;
+}
+
+.onboarding-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.onboarding-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--color-cyan), var(--color-purple));
+  color: #080710;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+}
+
+.onboarding-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-cyan), #ffffff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+
+.onboarding-subtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.onboarding-body {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.feature-icon-wrapper {
+  background: rgba(0, 242, 254, 0.1);
+  color: var(--color-cyan);
+  border-radius: 6px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feature-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.feature-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.key-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.key-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.badge-configured {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-neon-green);
+  background: rgba(57, 255, 20, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.badge-missing {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-magenta);
+  background: rgba(255, 0, 127, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.key-input-field {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+  color: var(--color-text);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  outline: none;
+  transition: all 0.3s;
+}
+
+.key-input-field:focus {
+  border-color: var(--color-cyan);
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.2);
+}
+
+.onboarding-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.step-indicator {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.btn-onboarding-next {
+  background: linear-gradient(135deg, var(--color-cyan), var(--color-purple));
+  color: #080710;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.btn-onboarding-next:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+}
+
+.btn-onboarding-back {
+  background: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--border-color);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-onboarding-back:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text);
+}
+

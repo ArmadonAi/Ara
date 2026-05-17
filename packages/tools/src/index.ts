@@ -3,6 +3,36 @@ import { z } from 'zod';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
+// Lazy lock integration — fail-closed by default.
+// Mutating operations require @ara/locks unless ARA_ALLOW_LOCK_FALLBACK=1.
+let lockModule: any = null;
+let lockFallbackWarned = false;
+
+async function ensureLocks(): Promise<{ available: boolean; isFallback?: boolean }> {
+  if (!lockModule) {
+    try {
+      lockModule = await import('@ara/locks');
+    } catch {
+      const allowFallback = process.env.ARA_ALLOW_LOCK_FALLBACK === '1';
+      if (!allowFallback) {
+        lockModule = { available: false, failClosed: true };
+      } else {
+        lockModule = { available: false, isFallback: true };
+        if (!lockFallbackWarned) {
+          lockFallbackWarned = true;
+          try {
+            lockModule.writeLockAudit?.('lock.unavailable_fallback', {
+              sessionId: 'system',
+              reason: 'ARA_ALLOW_LOCK_FALLBACK=1 — locks disabled',
+            });
+          } catch {}
+        }
+      }
+    }
+  }
+  return lockModule;
+}
+
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
 
@@ -130,33 +160,175 @@ export class WriteFileTool implements Tool {
       };
     }
 
+    const targetPath = resolveSafePath(ctx.cwd, input.filePath);
+    let acquiredLockId: string | null = null;
+
     try {
-      const targetPath = resolveSafePath(ctx.cwd, input.filePath);
-      
-      // 2. Phase 8: File Checkpointing / Backup before edit
+      // 2. Acquire write lock for target file path (fail-closed)
+      const locks = await ensureLocks();
+      if (locks.failClosed) {
+        return {
+          success: false,
+          output: '',
+          error: '[LOCK SYSTEM UNAVAILABLE] File locking module not available. Set ARA_ALLOW_LOCK_FALLBACK=1 to bypass, or ensure @ara/locks is installed.'
+        };
+      }
+      if (locks.available !== false) {
+        const lockResult = locks.acquireLock({
+          sessionId: ctx.sessionId,
+          path: targetPath,
+          mode: 'write',
+          reason: `write_file: ${input.filePath}`,
+          ttlMs: 30_000,
+        });
+        if (!lockResult.ok) {
+          return {
+            success: false,
+            output: '',
+            error: `[LOCK BLOCKED] ${lockResult.error || 'Could not acquire write lock for file'}`
+          };
+        }
+        acquiredLockId = lockResult.lock!.id;
+      }
+
+      // 3. Phase 8: File Checkpointing / Backup before edit
       const exists = await fs.stat(targetPath).then(() => true).catch(() => false);
       if (exists) {
         const backupDir = path.join(ctx.cwd, '.ara', 'backups');
         await fs.mkdir(backupDir, { recursive: true });
-        
+
         const relativePath = path.relative(ctx.cwd, targetPath);
         const backupName = `${relativePath.replace(/[\\/:]/g, '_')}_${Date.now()}.bak`;
         const backupPath = path.join(backupDir, backupName);
-        
+
         const currentContent = await fs.readFile(targetPath, 'utf-8');
         await fs.writeFile(backupPath, currentContent, 'utf-8');
       }
 
-      // Ensure target directory exists
+      // 4. Ensure target directory exists and write file
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, input.content, 'utf-8');
-      
+
       return {
         success: true,
         output: `File successfully written to ${input.filePath} (${input.content.length} characters). Backup created if file existed.`
       };
     } catch (e: any) {
       return { success: false, output: '', error: e.message };
+    } finally {
+      // 5. Release lock on success or failure
+      if (acquiredLockId && locks.available !== false) {
+        locks.releaseLock(acquiredLockId);
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// 3b. edit_file Tool (Requires Approval + Checkpointing + Write Lock)
+// -------------------------------------------------------------
+export class EditFileTool implements Tool {
+  name = 'edit_file';
+  description = 'Edit an existing file by replacing a specific string with new content. Requires the file and oldString to exist.';
+  dangerLevel = 'write' as const;
+  requiresApproval = true;
+  inputSchema = z.object({
+    filePath: z.string(),
+    oldString: z.string(),
+    newString: z.string(),
+    replaceAll: z.boolean().optional().default(false),
+  });
+
+  async run(input: { filePath: string; oldString: string; newString: string; replaceAll?: boolean }, ctx: ToolContext): Promise<ToolResult> {
+    // 1. Credentials Safety Check
+    const secretFound = scanForSecrets(input.newString);
+    if (secretFound) {
+      return {
+        success: false,
+        output: '',
+        error: `Safety Block: Content contains exposed credentials: "${secretFound}"`
+      };
+    }
+
+    const targetPath = resolveSafePath(ctx.cwd, input.filePath);
+    let acquiredLockId: string | null = null;
+
+    try {
+      // 2. Acquire write lock for target file path (fail-closed)
+      const locks = await ensureLocks();
+      if (locks.failClosed) {
+        return {
+          success: false,
+          output: '',
+          error: '[LOCK SYSTEM UNAVAILABLE] File locking module not available. Set ARA_ALLOW_LOCK_FALLBACK=1 to bypass, or ensure @ara/locks is installed.'
+        };
+      }
+      if (locks.available !== false) {
+        const lockResult = locks.acquireLock({
+          sessionId: ctx.sessionId,
+          path: targetPath,
+          mode: 'write',
+          reason: `edit_file: ${input.filePath}`,
+          ttlMs: 30_000,
+        });
+        if (!lockResult.ok) {
+          return {
+            success: false,
+            output: '',
+            error: `[LOCK BLOCKED] ${lockResult.error || 'Could not acquire write lock for file'}`
+          };
+        }
+        acquiredLockId = lockResult.lock!.id;
+      }
+
+      // 3. Read current file content
+      const exists = await fs.stat(targetPath).then(() => true).catch(() => false);
+      if (!exists) {
+        return { success: false, output: '', error: `File "${input.filePath}" does not exist. edit_file requires an existing file.` };
+      }
+
+      const currentContent = await fs.readFile(targetPath, 'utf-8');
+
+      // 4. Validate oldString exists in file
+      const occurrenceCount = currentContent.split(input.oldString).length - 1;
+      if (occurrenceCount === 0) {
+        return { success: false, output: '', error: `oldString "${input.oldString}" not found in "${input.filePath}".` };
+      }
+      if (!input.replaceAll && occurrenceCount > 1) {
+        return {
+          success: false,
+          output: '',
+          error: `oldString "${input.oldString}" found ${occurrenceCount} times in "${input.filePath}". Use replaceAll=true to replace all occurrences, or provide a more specific oldString.`
+        };
+      }
+
+      // 5. Backup before edit
+      const backupDir = path.join(ctx.cwd, '.ara', 'backups');
+      await fs.mkdir(backupDir, { recursive: true });
+      const relativePath = path.relative(ctx.cwd, targetPath);
+      const backupName = `${relativePath.replace(/[\\/:]/g, '_')}_${Date.now()}.bak`;
+      const backupPath = path.join(backupDir, backupName);
+      await fs.writeFile(backupPath, currentContent, 'utf-8');
+
+      // 6. Perform the edit
+      const newContent = input.replaceAll
+        ? currentContent.split(input.oldString).join(input.newString)
+        : currentContent.replace(input.oldString, input.newString);
+
+      await fs.writeFile(targetPath, newContent, 'utf-8');
+
+      return {
+        success: true,
+        output: `File "${input.filePath}" edited successfully. Replaced ${occurrenceCount} occurrence(s). Backup saved to .ara/backups/.`
+      };
+    } catch (e: any) {
+      return { success: false, output: '', error: e.message };
+    } finally {
+      // 7. Release lock on success or failure
+      if (acquiredLockId) {
+        const locks = await ensureLocks();
+        if (locks.available !== false) locks.releaseLock(acquiredLockId);
+      }
     }
   }
 }
@@ -181,8 +353,20 @@ export class RunShellTool implements Tool {
     'chmod -R', 'chown -R'
   ];
 
+  // Detect if a shell command is potentially mutating (modifies files/workspace)
+  private isMutatingCommand(cmd: string): boolean {
+    const mutatingKeywords = [
+      'write', 'edit', 'create', 'delete', 'remove', 'update', 'patch',
+      'commit', 'push', 'merge', 'mv ', 'cp ', 'rm ', 'mkdir', 'touch',
+      'chmod', 'chown', 'ln ', '>', '>>', '| tee',
+    ];
+    const lower = cmd.toLowerCase();
+    return mutatingKeywords.some(k => lower.includes(k));
+  }
+
   async run(input: { command: string }, ctx: ToolContext): Promise<ToolResult> {
     const cmd = input.command.trim();
+    let acquiredLockId: string | null = null;
 
     // 1. Strict Security Allowed Command Check
     for (const blocked of this.blocklist) {
@@ -203,6 +387,35 @@ export class RunShellTool implements Tool {
         output: '',
         error: `Safety Block: Command line contains exposed credentials: "${secretFound}"`
       };
+    }
+
+    // 3. Acquire workspace write lock for mutating commands (fail-closed)
+    if (this.isMutatingCommand(cmd)) {
+      const locks = await ensureLocks();
+      if (locks.failClosed) {
+        return {
+          success: false,
+          output: '',
+          error: '[LOCK SYSTEM UNAVAILABLE] File locking module not available. Set ARA_ALLOW_LOCK_FALLBACK=1 to bypass, or ensure @ara/locks is installed.'
+        };
+      }
+      if (locks.available !== false) {
+        const lockResult = locks.acquireLock({
+          sessionId: ctx.sessionId,
+          path: ctx.cwd,
+          mode: 'write',
+          reason: `mutating shell: ${cmd.slice(0, 80)}`,
+          ttlMs: 60_000,
+        });
+        if (!lockResult.ok) {
+          return {
+            success: false,
+            output: '',
+            error: `[LOCK BLOCKED] ${lockResult.error || 'Could not acquire write lock for workspace'}`
+          };
+        }
+        acquiredLockId = lockResult.lock!.id;
+      }
     }
 
     try {
@@ -252,6 +465,12 @@ export class RunShellTool implements Tool {
       };
     } catch (e: any) {
       return { success: false, output: '', error: e.message };
+    } finally {
+      // Release workspace lock if acquired for mutating command
+      if (acquiredLockId) {
+        const locks = await ensureLocks();
+        if (locks.available !== false) locks.releaseLock(acquiredLockId);
+      }
     }
   }
 }

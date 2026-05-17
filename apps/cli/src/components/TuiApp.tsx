@@ -12,7 +12,7 @@ export function TuiApp() {
   const client = new ApiClient();
 
   // Navigation & tabs
-  const tabs = ['Chat', 'Approvals', 'Tools', 'Memory', 'Skills', 'Audit', 'Status'] as const;
+  const tabs = ['Chat', 'Subagents', 'Approvals', 'Checkpoints', 'MCP', 'GitHub', 'Locks', 'Canvas', 'Tools', 'Memory', 'Skills', 'Learning', 'Audit', 'Status'] as const;
   type TabType = typeof tabs[number];
   const [activeTab, setActiveTab] = useState<TabType>('Chat');
 
@@ -23,14 +23,58 @@ export function TuiApp() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [learningData, setLearningData] = useState<any>(null);
+  const [learningDrafts, setLearningDrafts] = useState<any[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [subagents, setSubagents] = useState<any[]>([]);
+  const [subagentRuns, setSubagentRuns] = useState<any[]>([]);
   
+  // Checkpoints states
+  const [checkpoints, setCheckpoints] = useState<any[]>([]);
+  const [selectedCheckpointIndex, setSelectedCheckpointIndex] = useState<number>(0);
+  const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
+  const [selectedCheckpointDetails, setSelectedCheckpointDetails] = useState<any | null>(null);
+  const [checkpointDiff, setCheckpointDiff] = useState<any | null>(null);
+  const [restoreMode, setRestoreMode] = useState<'code_only' | 'conversation_only' | 'both'>('code_only');
+  const [showRestoreModal, setShowRestoreModal] = useState<boolean>(false);
+  const [restoreStatus, setRestoreStatus] = useState<string>('');
+
+  // MCP states
+  const [mcpServers, setMcpServers] = useState<any[]>([]);
+  const [mcpHealth, setMcpHealth] = useState<any[]>([]);
+  const [mcpOverview, setMcpOverview] = useState<any>(null);
+  const [selectedMcpServerId, setSelectedMcpServerId] = useState<string | null>(null);
+  const [selectedMcpServerDetail, setSelectedMcpServerDetail] = useState<any | null>(null);
+
+  // GitHub states
+  const [ghStatus, setGhStatus] = useState<any | null>(null);
+  const [ghIssues, setGhIssues] = useState<any[]>([]);
+  const [ghPrs, setGhPrs] = useState<any[]>([]);
+  const [ghChecks, setGhChecks] = useState<any[]>([]);
+  const [ghSelectedIssue, setGhSelectedIssue] = useState<any | null>(null);
+  const [ghSelectedPr, setGhSelectedPr] = useState<any | null>(null);
+
+  // Lock states
+  const [lockList, setLockList] = useState<any[]>([]);
+  const [lockAudit, setLockAudit] = useState<any[]>([]);
+  const [parallelRuns, setParallelRuns] = useState<any[]>([]);
+  const [showForceReleaseModal, setShowForceReleaseModal] = useState(false);
+  const [forceReleaseLockId, setForceReleaseLockId] = useState<string | null>(null);
+
   // Status parameters
+
+  // Canvas states
+  const [canvasWorkspaces, setCanvasWorkspaces] = useState<any[]>([]);
+  const [selectedCanvasWs, setSelectedCanvasWs] = useState<any | null>(null);
+  const [canvasNodes, setCanvasNodes] = useState<any[]>([]);
+  const [canvasEdgesCount, setCanvasEdgesCount] = useState(0);
+  const [canvasLoading, setCanvasLoading] = useState(false);
   const [apiReachable, setApiReachable] = useState<boolean>(true);
   const [version, setVersion] = useState<string>('unknown');
   const [dbStatus, setDbStatus] = useState<string>('unknown');
   const [sandboxMode, setSandboxMode] = useState<boolean>(false);
   const [permissionMode, setPermissionMode] = useState<string>('default');
+  const [hasSomeKeys, setHasSomeKeys] = useState<boolean>(true);
 
   // Stdin states
   const [inputVal, setInputVal] = useState<string>('');
@@ -67,6 +111,13 @@ export function TuiApp() {
           setPermissionMode(stat.activePermissionMode);
         }
 
+        try {
+          const keys = await client.getConfigKeys();
+          setHasSomeKeys(keys.GEMINI_API_KEY || keys.OPENAI_API_KEY || keys.ANTHROPIC_API_KEY);
+        } catch (e) {
+          setHasSomeKeys(true);
+        }
+
         const sess = await client.listSessions();
         setSessions(sess);
         if (sess.length > 0 && sess[0]) {
@@ -79,8 +130,79 @@ export function TuiApp() {
         setApprovals(apps.filter(a => a.status === 'pending'));
 
         setSkills(await client.listSkills());
+        // Load learning data
+        try {
+          const sl = await client.getSkillLearningOverview();
+          setLearningData(sl);
+          const draftsData = await client.listSkillDrafts();
+          setLearningDrafts(draftsData.drafts || []);
+        } catch (e) {}
         setMemories(await client.listMemory());
         setAuditLogs(await client.listAuditLogs());
+        try {
+          setSubagents(await client.listSubagents());
+          setSubagentRuns(await client.listSubagentRuns());
+        } catch (err) {}
+
+        try {
+          const chks = await client.listCheckpoints();
+          setCheckpoints(chks);
+          if (chks.length > 0 && chks[0]) {
+            setSelectedCheckpointId(chks[0].id);
+            setSelectedCheckpointIndex(0);
+            try {
+              setSelectedCheckpointDetails(await client.getCheckpoint(chks[0].id));
+              setCheckpointDiff(await client.diffCheckpoint(chks[0].id));
+            } catch (e) {}
+          }
+        } catch (e) {}
+        // Load MCP data
+        try {
+          const overview = await client.getMcpOverview();
+          setMcpOverview(overview);
+          const serverData = await client.listMcpServers();
+          setMcpServers(serverData.servers || []);
+          if (serverData.servers && serverData.servers.length > 0 && !selectedMcpServerId) {
+            setSelectedMcpServerId(serverData.servers[0].id);
+          }
+          if (selectedMcpServerId) {
+            try {
+              setSelectedMcpServerDetail(await client.getMcpServer(selectedMcpServerId));
+            } catch (e) {}
+          }
+          const healthData = await client.getMcpHealth();
+          setMcpHealth(healthData.results || []);
+        } catch (e) {}
+        // Load GitHub data
+        try {
+          const statusData = await client.getGitHubStatus();
+          setGhStatus(statusData);
+          if (statusData.configured && statusData.defaultOwner && statusData.defaultRepo) {
+            const [owner, repo] = [statusData.defaultOwner, statusData.defaultRepo];
+            try {
+              const issuesData = await client.getGitHubIssues(owner, repo);
+              if (issuesData.ok) setGhIssues(JSON.parse(issuesData.output || '[]'));
+            } catch (e) {}
+            try {
+              const prsData = await client.getGitHubPRs(owner, repo);
+              if (prsData.ok) setGhPrs(JSON.parse(prsData.output || '[]'));
+            } catch (e) {}
+          }
+        } catch (e) {}
+        // Load canvas data
+        try {
+          const wsData = await client.listCanvasWorkspaces();
+          setCanvasWorkspaces(wsData.workspaces || []);
+        } catch (e) {}
+        // Load lock data
+        try {
+          const lockData = await client.listLocks();
+          setLockList(lockData.locks || []);
+          const auditData = await client.getLockAudit(20);
+          setLockAudit(auditData.records || []);
+          const paraData = await client.listParallelRuns();
+          setParallelRuns(paraData.runs || []);
+        } catch (e) {}
       } catch (e) {
         setApiReachable(false);
       }
@@ -98,12 +220,58 @@ export function TuiApp() {
           setPermissionMode(stat.activePermissionMode);
         }
         
+        try {
+          const keys = await client.getConfigKeys();
+          setHasSomeKeys(keys.GEMINI_API_KEY || keys.OPENAI_API_KEY || keys.ANTHROPIC_API_KEY);
+        } catch (e) {}
+
         const apps = await client.listApprovals();
         setApprovals(apps.filter(a => a.status === 'pending'));
 
         // Refresh sessions list
         const sess = await client.listSessions();
         setSessions(sess);
+
+        try {
+          setSubagents(await client.listSubagents());
+          setSubagentRuns(await client.listSubagentRuns());
+        } catch (err) {}
+
+        try {
+          const chks = await client.listCheckpoints();
+          setCheckpoints(chks);
+        } catch (e) {}
+        // Refresh MCP data
+        try {
+          const serverData = await client.listMcpServers();
+          setMcpServers(serverData.servers || []);
+          const healthData = await client.getMcpHealth();
+          setMcpHealth(healthData.results || []);
+        } catch (e) {}
+        // Refresh GitHub data
+        try {
+          const statusData = await client.getGitHubStatus();
+          setGhStatus(statusData);
+        } catch (e) {}
+        // Refresh canvas data
+        try {
+          const wsData = await client.listCanvasWorkspaces();
+          setCanvasWorkspaces(wsData.workspaces || []);
+        } catch (e) {}
+        // Refresh lock data
+        try {
+          const lockData = await client.listLocks();
+          setLockList(lockData.locks || []);
+          const paraData = await client.listParallelRuns();
+          setParallelRuns(paraData.runs || []);
+        } catch (e) {}
+        // Refresh learning data
+        try {
+          const sl = await client.getSkillLearningOverview();
+          setLearningData(sl);
+          const draftsData = await client.listSkillDrafts();
+          setLearningDrafts(draftsData.drafts || []);
+        } catch (e) {}
       } catch (e) {
         setApiReachable(false);
       }
@@ -137,6 +305,84 @@ export function TuiApp() {
       return;
     }
 
+    // Modal input interceptor
+    if (showRestoreModal) {
+      if (input === 'y' || input === 'Y') {
+        if (selectedCheckpointId) {
+          setRestoreStatus('Restoring...');
+          try {
+            await client.restoreCheckpoint(selectedCheckpointId, restoreMode);
+            setRestoreStatus('✅ Success!');
+            setTimeout(async () => {
+              setShowRestoreModal(false);
+              setRestoreStatus('');
+              try {
+                const chks = await client.listCheckpoints();
+                setCheckpoints(chks);
+              } catch (e) {}
+            }, 2000);
+          } catch (err: any) {
+            setRestoreStatus(`❌ Failed: ${err.message}`);
+          }
+        }
+        return;
+      }
+      if (input === 'n' || input === 'N' || key.escape) {
+        setShowRestoreModal(false);
+        setRestoreStatus('');
+        return;
+      }
+      return; // Freeze all other keypresses
+    }
+
+    // Checkpoints Tab specific key interceptors (UP/DOWN/C/V/B/R)
+    if (activeTab === 'Checkpoints') {
+      if (key.upArrow && checkpoints.length > 0) {
+        const prevIdx = (selectedCheckpointIndex - 1 + checkpoints.length) % checkpoints.length;
+        setSelectedCheckpointIndex(prevIdx);
+        const target = checkpoints[prevIdx];
+        if (target) {
+          setSelectedCheckpointId(target.id);
+          try {
+            setSelectedCheckpointDetails(await client.getCheckpoint(target.id));
+            setCheckpointDiff(await client.diffCheckpoint(target.id));
+          } catch (e) {}
+        }
+        return;
+      }
+      if (key.downArrow && checkpoints.length > 0) {
+        const nextIdx = (selectedCheckpointIndex + 1) % checkpoints.length;
+        setSelectedCheckpointIndex(nextIdx);
+        const target = checkpoints[nextIdx];
+        if (target) {
+          setSelectedCheckpointId(target.id);
+          try {
+            setSelectedCheckpointDetails(await client.getCheckpoint(target.id));
+            setCheckpointDiff(await client.diffCheckpoint(target.id));
+          } catch (e) {}
+        }
+        return;
+      }
+      if (input === 'c' || input === 'C') {
+        setRestoreMode('code_only');
+        return;
+      }
+      if (input === 'v' || input === 'V') {
+        setRestoreMode('conversation_only');
+        return;
+      }
+      if (input === 'b' || input === 'B') {
+        setRestoreMode('both');
+        return;
+      }
+      if (input === 'r' || input === 'R') {
+        if (selectedCheckpointId) {
+          setShowRestoreModal(true);
+        }
+        return;
+      }
+    }
+
     // New conversation trigger
     if (key.ctrl && input === 'n') {
       try {
@@ -164,13 +410,14 @@ export function TuiApp() {
     }
 
     // Direct tab shortcut keys
+    if (input === 'b') { setActiveTab('Subagents'); return; }
     if (input === 'a') { setActiveTab('Approvals'); return; }
     if (input === 'm') { setActiveTab('Memory'); return; }
     if (input === 's') { setActiveTab('Skills'); return; }
     if (input === 't') { setActiveTab('Tools'); return; }
     if (input === 'g') { setActiveTab('Audit'); return; }
 
-    // Session Switcher Arrow keys (up/down) in Sidebar
+    // Session Switcher Arrow keys (up/down) in Sidebar (only if not activeTab checkpoints)
     if (key.upArrow && sessions.length > 0) {
       const prevIdx = (selectedSessionIndex - 1 + sessions.length) % sessions.length;
       setSelectedSessionIndex(prevIdx);
@@ -353,25 +600,127 @@ export function TuiApp() {
         {/* Sidebar panels */}
         <Box width={30} borderStyle="single" borderColor="gray" flexDirection="column" justifyContent="space-between">
           <Box flexDirection="column">
-            <Box borderStyle="classic" borderColor="gray">
-              <Text bold color="yellow">💬 Sessions List</Text>
-            </Box>
-            {sessions.length === 0 ? (
-              <Text color="gray"> No sessions available.</Text>
-            ) : (
-              sessions.slice(0, 12).map((s) => (
-                <Box key={s.id} paddingX={1}>
-                  <Text color={selectedSessionId === s.id ? 'green' : 'white'} bold={selectedSessionId === s.id}>
-                    {selectedSessionId === s.id ? '👉 ' : '  '}
-                    {s.title.slice(0, 20)} ({s.messageCount})
-                  </Text>
+            {activeTab === 'Checkpoints' ? (
+              <>
+                <Box borderStyle="classic" borderColor="gray">
+                  <Text bold color="yellow">🔒 Checkpoints List</Text>
                 </Box>
-              ))
+                {checkpoints.length === 0 ? (
+                  <Text color="gray"> No checkpoints.</Text>
+                ) : (
+                  checkpoints.slice(0, 12).map((c) => (
+                    <Box key={c.id} paddingX={1}>
+                      <Text color={selectedCheckpointId === c.id ? 'green' : 'white'} bold={selectedCheckpointId === c.id}>
+                        {selectedCheckpointId === c.id ? '👉 ' : '  '}
+                        {c.id.slice(0, 8)}... ({c.createdBy.slice(0, 10)})
+                      </Text>
+                    </Box>
+                  ))
+                )}
+              </>
+            ) : activeTab === 'MCP' ? (
+              <>
+                <Box borderStyle="classic" borderColor="gray">
+                  <Text bold color="yellow">🔌 MCP Servers</Text>
+                </Box>
+                {mcpServers.length === 0 ? (
+                  <Text color="gray"> No MCP servers configured.</Text>
+                ) : (
+                  mcpServers.slice(0, 12).map((s) => (
+                    <Box key={s.id} paddingX={1}>
+                      <Text color={selectedMcpServerId === s.id ? 'green' : 'white'} bold={selectedMcpServerId === s.id}>
+                        {selectedMcpServerId === s.id ? '👉 ' : '  '}
+                        {s.id.slice(0, 14).padEnd(14)} {s.enabled ? 'ON' : 'OFF'}
+                      </Text>
+                    </Box>
+                  ))
+                )}
+              </>
+            ) : activeTab === 'GitHub' ? (
+              <>
+                <Box borderStyle="classic" borderColor="gray">
+                  <Text bold color="yellow">🔗 GitHub Overview</Text>
+                </Box>
+                <Box paddingX={1} flexDirection="column">
+                  <Text color="gray">Status: {ghStatus?.tokenPresent ? 'Connected' : 'No Token'}</Text>
+                  <Text color="gray">Repo: {ghStatus?.defaultOwner || '?'}/{ghStatus?.defaultRepo || '?'}</Text>
+                  <Text color="gray">ReadOnly: {ghStatus?.readOnly ? 'Yes' : 'No'}</Text>
+                  <Text color="gray">Repos: {(ghStatus?.allowedRepos || []).length > 0 ? ghStatus.allowedRepos.join(', ') : 'all'}</Text>
+                </Box>
+              </>
+            ) : activeTab === 'Locks' ? (
+              <>
+                <Box borderStyle="classic" borderColor="gray">
+                  <Text bold color="yellow">🔒 Active Locks ({lockList.length})</Text>
+                </Box>
+                {lockList.length === 0 ? (
+                  <Text color="gray"> No active locks.</Text>
+                ) : (
+                  lockList.slice(0, 10).map((l: any) => (
+                    <Box key={l.id} paddingX={1}>
+                      <Text color="white">{l.mode === 'write' ? '✍️' : '👁️'} {l.path?.slice(-20).padStart(20)}</Text>
+                    </Box>
+                  ))
+                )}
+                <Box borderStyle="classic" borderColor="gray" marginTop={1}>
+                  <Text bold color="yellow">🔄 Parallel Runs ({parallelRuns.length})</Text>
+                </Box>
+                {parallelRuns.slice(0, 5).map((r: any) => (
+                  <Box key={r.id} paddingX={1}>
+                    <Text color="white">{r.status?.slice(0, 8).padEnd(8)} {(r.profiles || []).length} agents</Text>
+                  </Box>
+                ))}
+              </>
+            ) : activeTab === 'Canvas' ? (
+              <>
+                <Box borderStyle="classic" borderColor="gray">
+                  <Text bold color="yellow">📋 Canvas ({canvasWorkspaces.length})</Text>
+                </Box>
+                {canvasWorkspaces.length === 0 ? (
+                  <Text color="gray"> No workspaces.</Text>
+                ) : (
+                  canvasWorkspaces.slice(0, 10).map((ws: any) => (
+                    <Box key={ws.id} paddingX={1}>
+                      <Text color="white">{(ws.name || '').slice(0, 16).padEnd(16)}</Text>
+                    </Box>
+                  ))
+                )}
+              </>
+            ) : (
+              <>
+                <Box borderStyle="classic" borderColor="gray">
+                  <Text bold color="yellow">💬 Sessions List</Text>
+                </Box>
+                {sessions.length === 0 ? (
+                  <Text color="gray"> No sessions available.</Text>
+                ) : (
+                  sessions.slice(0, 12).map((s) => (
+                    <Box key={s.id} paddingX={1}>
+                      <Text color={selectedSessionId === s.id ? 'green' : 'white'} bold={selectedSessionId === s.id}>
+                        {selectedSessionId === s.id ? '👉 ' : '  '}
+                        {s.title.slice(0, 20)} ({s.messageCount})
+                      </Text>
+                    </Box>
+                  ))
+                )}
+              </>
             )}
           </Box>
           <Box padding={1} borderStyle="classic" borderColor="gray">
-            <Text color="gray">Ctrl+N: New Session</Text>
-            <Text color="gray">Tab: Switch tab</Text>
+            {activeTab === 'Checkpoints' ? (
+              <>
+                <Text color="gray">↑↓: Navigate</Text>
+                <Text color="gray">C: Code_only</Text>
+                <Text color="gray">V: Msg_only</Text>
+                <Text color="gray">B: Both mode</Text>
+                <Text color="gray">R: Restore</Text>
+              </>
+            ) : (
+              <>
+                <Text color="gray">Ctrl+N: New Sess</Text>
+                <Text color="gray">Tab: Switch tab</Text>
+              </>
+            )}
           </Box>
         </Box>
 
@@ -382,6 +731,12 @@ export function TuiApp() {
               <Box borderStyle="classic" borderColor="yellow">
                 <Text bold color="yellow">Active Session Messages (ID: {selectedSessionId || 'none'})</Text>
               </Box>
+              {!hasSomeKeys && (
+                <Box borderStyle="round" borderColor="red" padding={1} marginY={1} flexDirection="column">
+                  <Text color="red" bold>⚠️  CREDENTIALS WARNING: No API Keys configured!</Text>
+                  <Text color="yellow">Please open the Web Dashboard (port 3000) or add API keys inside the root .env file.</Text>
+                </Box>
+              )}
               <Box flexDirection="column" flexGrow={1} marginY={1}>
                 {messages.length === 0 ? (
                   <Text color="gray">Ready for your prompt. Type below and press Enter!</Text>
@@ -398,6 +753,48 @@ export function TuiApp() {
                     );
                   })
                 )}
+              </Box>
+            </Box>
+          )}
+
+          {activeTab === 'Subagents' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="green">
+                <Text bold color="green">🤖 Active & Safe Read-Only Subagents Profiles</Text>
+              </Box>
+              <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                {/* Left panel: Profiles list */}
+                <Box width={35} flexDirection="column" marginRight={2}>
+                  <Text bold color="yellow">Available Profiles:</Text>
+                  {subagents.length === 0 ? (
+                    <Text color="gray">No subagent profiles found.</Text>
+                  ) : (
+                    subagents.map(p => (
+                      <Box key={p.name} flexDirection="column" marginY={1}>
+                        <Text bold color="cyan">- {p.name}</Text>
+                        <Text color="gray">{p.description.slice(0, 30)}...</Text>
+                      </Box>
+                    ))
+                  )}
+                </Box>
+                {/* Right panel: Recent Runs */}
+                <Box flexGrow={1} flexDirection="column">
+                  <Text bold color="yellow">Recent Delegation Runs:</Text>
+                  {subagentRuns.length === 0 ? (
+                    <Text color="gray">No active subagent runs recorded.</Text>
+                  ) : (
+                    subagentRuns.slice(0, 4).map(r => {
+                      const icon = r.status === 'completed' ? '✅' : r.status === 'failed' ? '❌' : r.status === 'cancelled' ? '⚠️' : '⏳';
+                      return (
+                        <Box key={r.id} borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} flexDirection="column">
+                          <Text bold color="cyan">{icon} Run ID: {r.id} ({r.profileName})</Text>
+                          <Text color="white">Task: {r.task.slice(0, 40)}...</Text>
+                          <Text color="gray">Status: {r.status}</Text>
+                        </Box>
+                      );
+                    })
+                  )}
+                </Box>
               </Box>
             </Box>
           )}
@@ -423,6 +820,306 @@ export function TuiApp() {
                     </Box>
                   </Box>
                 ))
+              )}
+            </Box>
+          )}
+
+          {activeTab === 'Checkpoints' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="green">
+                <Text bold color="green">🔒 Safe Checkpoints & Rewind UX Dashboard</Text>
+              </Box>
+              
+              {showRestoreModal ? (
+                <Box borderStyle="double" borderColor="red" padding={1} marginY={1} flexDirection="column" alignItems="center">
+                  <Text color="red" bold>⚠️⚠️⚠️ RESTORE WARNING ⚠️⚠️⚠️</Text>
+                  
+                  <Box marginTop={1}>
+                    <Text color="yellow" bold>
+                      Are you absolutely sure you want to restore to checkpoint:
+                    </Text>
+                  </Box>
+                  
+                  <Text color="cyan" bold>{selectedCheckpointId}</Text>
+                  
+                  <Box marginTop={1}>
+                    <Text color="white">
+                      Selected Mode: <Text color="green" bold>{restoreMode.toUpperCase()}</Text>
+                    </Text>
+                  </Box>
+                  
+                  <Box marginY={1}>
+                    <Text color="gray">
+                      This will modify files in the active workspace and/or restore SQLite database state.
+                      This action is fully recorded in the system audit logs.
+                    </Text>
+                  </Box>
+                  
+                  {restoreStatus ? (
+                    <Text color="yellow" bold>{restoreStatus}</Text>
+                  ) : (
+                    <Box flexDirection="row" marginTop={1}>
+                      <Text color="green" bold>[Y] Yes, Restore now  </Text>
+                      <Text color="red" bold>[N/Esc] No, Cancel</Text>
+                    </Box>
+                  )}
+                </Box>
+              ) : (
+                <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                  {/* Left Column: Details */}
+                  <Box flexGrow={1} flexDirection="column" marginRight={2}>
+                    <Text bold color="yellow">Selected Checkpoint Details:</Text>
+                    {selectedCheckpointDetails ? (
+                      <Box flexDirection="column" marginY={1}>
+                        <Text color="white">Reason:      <Text color="cyan" bold>{selectedCheckpointDetails.reason}</Text></Text>
+                        <Text color="white">Created By:  <Text color="yellow">{selectedCheckpointDetails.createdBy}</Text></Text>
+                        <Text color="white">Time:        <Text color="gray">{selectedCheckpointDetails.createdAt}</Text></Text>
+                        <Text color="white">Commit Head: <Text color="gray">{selectedCheckpointDetails.gitHead || 'none'}</Text></Text>
+                        <Text color="white">Messages:    <Text color="gray">{selectedCheckpointDetails.messageCount || 0}</Text></Text>
+                        <Text color="white">Files Count: <Text color="gray">{selectedCheckpointDetails.files?.length || 0} snapshotted</Text></Text>
+                      </Box>
+                    ) : (
+                      <Box marginY={1}>
+                        <Text color="gray">No checkpoint selected.</Text>
+                      </Box>
+                    )}
+
+                    <Box marginTop={1}>
+                      <Text bold color="yellow">Select Restore Mode:</Text>
+                    </Box>
+                    
+                    <Box flexDirection="column" marginY={1}>
+                      <Text color={restoreMode === 'code_only' ? 'green' : 'white'} bold={restoreMode === 'code_only'}>
+                        {restoreMode === 'code_only' ? '●' : '○'} [Press C] Code Only (Restore workspace code files)
+                      </Text>
+                      <Text color={restoreMode === 'conversation_only' ? 'green' : 'white'} bold={restoreMode === 'conversation_only'}>
+                        {restoreMode === 'conversation_only' ? '●' : '○'} [Press V] Msg Only (Rewind chat messages)
+                      </Text>
+                      <Text color={restoreMode === 'both' ? 'green' : 'white'} bold={restoreMode === 'both'}>
+                        {restoreMode === 'both' ? '●' : '○'} [Press B] Both (Full Code and Chat Rewind)
+                      </Text>
+                    </Box>
+
+                    {selectedCheckpointId && (
+                      <Box marginTop={1}>
+                        <Text color="red" bold inverse>  [Press R] Trigger Safe Restore Confirmation Modal  </Text>
+                      </Box>
+                    )}
+                  </Box>
+
+                  {/* Right Column: Diffs */}
+                  <Box width={40} flexDirection="column">
+                    <Text bold color="yellow">Workspace Diff relative to Checkpoint:</Text>
+                    {checkpointDiff ? (
+                      <Box flexDirection="column" marginY={1}>
+                        {checkpointDiff.modified?.length === 0 && checkpointDiff.created?.length === 0 && checkpointDiff.deleted?.length === 0 ? (
+                          <Text color="green">✨ Workspace is fully identical to checkpoint!</Text>
+                        ) : (
+                          <>
+                            {checkpointDiff.created?.map((f: string) => (
+                              <Text key={f} color="green">[+] {f.slice(0, 35)}</Text>
+                            ))}
+                            {checkpointDiff.modified?.map((f: string) => (
+                              <Text key={f} color="yellow">[~] {f.slice(0, 35)}</Text>
+                            ))}
+                            {checkpointDiff.deleted?.map((f: string) => (
+                              <Text key={f} color="red">[-] {f.slice(0, 35)}</Text>
+                            ))}
+                          </>
+                        )}
+                        {checkpointDiff.skipped?.length > 0 && (
+                          <Box marginTop={1}>
+                            <Text color="gray">. Skipped (Large/Secret/Binary): {checkpointDiff.skipped.length} files</Text>
+                          </Box>
+                        )}
+                      </Box>
+                    ) : (
+                      <Box marginY={1}>
+                        <Text color="gray">Select a checkpoint to see the workspace diff.</Text>
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {activeTab === 'MCP' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="green">
+                <Text bold color="green">🔌 MCP External Tools</Text>
+              </Box>
+              {mcpServers.length === 0 ? (
+                <Text color="gray"> No MCP servers configured. Add servers to .ara/mcp.json</Text>
+              ) : (
+                <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                  <Box width={40} flexDirection="column" marginRight={1}>
+                    <Text bold color="yellow">Servers</Text>
+                    {mcpServers.map(s => {
+                      const sel = selectedMcpServerId === s.id;
+                      const health = mcpHealth.find(h => h.serverId === s.id);
+                      const st = health?.state || s.state || 'unknown';
+                      return (
+                        <Box key={s.id} flexDirection="column" marginY={1} paddingX={1}
+                          borderStyle={sel ? 'round' : undefined} borderColor={sel ? 'green' : undefined}>
+                          <Text bold color="cyan">- {s.id} {s.enabled ? '(enabled)' : '(disabled)'}</Text>
+                          <Text color="white">Type: {s.type}  Trusted: {s.trusted ? 'yes' : 'no'}</Text>
+                          <Text color="gray">Mode: {s.permissionMode || 'default'}  State: {st}</Text>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                  <Box flexGrow={1} flexDirection="column">
+                    <Text bold color="yellow">Server Details</Text>
+                    {selectedMcpServerId ? (
+                      <Box flexDirection="column" marginTop={1}>
+                        <Text>ID: {selectedMcpServerId}</Text>
+                        <Text>Tools: {selectedMcpServerDetail?.tools?.length || 0}</Text>
+                        <Text>State: {selectedMcpServerDetail?.state || 'unknown'}</Text>
+                        <Text>Error: {selectedMcpServerDetail?.lastError || 'none'}</Text>
+                        {selectedMcpServerDetail?.tools?.length > 0 && (
+                          <>
+                            <Text bold color="green" marginTop={1}>Discovered Tools:</Text>
+                            {selectedMcpServerDetail.tools.slice(0, 8).map((t: any) => (
+                              <Text key={t.name}>  {t.mutating ? '⚠️ ' : '   '}{t.name} ({t.dangerLevel})</Text>
+                            ))}
+                          </>
+                        )}
+                      </Box>
+                    ) : (
+                      <Text color="gray">Select a server from the sidebar.</Text>
+                    )}
+                    {mcpHealth.length > 0 && (
+                      <>
+                        <Text bold color="yellow" marginTop={1}>Health Summary</Text>
+                        {mcpHealth.slice(0, 4).map(h => (
+                          <Text key={h.serverId}>  {h.serverId}: state={h.state} tools={h.toolCount}</Text>
+                        ))}
+                      </>
+                    )}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {activeTab === 'GitHub' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="green">
+                <Text bold color="green">🔗 GitHub Integration</Text>
+              </Box>
+              {!ghStatus?.configured ? (
+                <Text color="gray"> GitHub not configured. See docs/GITHUB.md</Text>
+              ) : (
+                <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                  <Box width={40} flexDirection="column" marginRight={1}>
+                    <Text bold color="yellow">Configuration</Text>
+                    <Text>Status: {ghStatus.tokenPresent ? 'Connected' : 'No Token'}</Text>
+                    <Text>ReadOnly: {ghStatus.readOnly ? 'Yes' : 'No'}</Text>
+                    <Text>Default: {ghStatus.defaultOwner || '?'}/{ghStatus.defaultRepo || '?'}</Text>
+                    <Text bold color="yellow" marginTop={1}>Issues (open)</Text>
+                    {ghIssues.length === 0 ? <Text color="gray"> None loaded</Text> : (
+                      ghIssues.slice(0, 5).map((i: any) => (
+                        <Box key={i.id || i.number} paddingX={1}>
+                          <Text color="white">#{i.number} {String(i.title || '').slice(0, 25)}</Text>
+                        </Box>
+                      ))
+                    )}
+                    <Text bold color="yellow" marginTop={1}>PRs (open)</Text>
+                    {ghPrs.length === 0 ? <Text color="gray"> None loaded</Text> : (
+                      ghPrs.slice(0, 5).map((p: any) => (
+                        <Box key={p.id || p.number} paddingX={1}>
+                          <Text color="white">#{p.number} {String(p.title || '').slice(0, 25)}</Text>
+                        </Box>
+                      ))
+                    )}
+                  </Box>
+                  <Box flexGrow={1} flexDirection="column">
+                    <Text bold color="yellow">Allowed Repos</Text>
+                    <Text color="gray">{(ghStatus.allowedRepos || []).length > 0 ? ghStatus.allowedRepos.join(', ') : 'All repos allowed'}</Text>
+                    <Text bold color="yellow" marginTop={1}>Token Environment Variable</Text>
+                    <Text color="gray">{ghStatus.tokenEnv || 'GITHUB_TOKEN'}</Text>
+                    <Text color="gray" marginTop={1}>Token value is never displayed</Text>
+                    <Text bold color="yellow" marginTop={1}>Rate Limits</Text>
+                    <Text color="gray">Check via CLI: ara github status</Text>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {activeTab === 'Locks' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="yellow">
+                <Text bold color="yellow">🔒 File Locks & Parallel Runs</Text>
+              </Box>
+              <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                <Box width={45} flexDirection="column" marginRight={1}>
+                  <Text bold color="yellow">Active Locks ({lockList.length})</Text>
+                  {lockList.length === 0 ? <Text color="gray"> No active locks.</Text> : (
+                    lockList.slice(0, 8).map((l: any) => (
+                      <Box key={l.id} paddingX={1} marginY={1} borderStyle="round" borderColor="gray">
+                        <Text>{l.mode === 'write' ? '✍️ Write' : '👁️ Read'} on {l.path?.slice(-30)}</Text>
+                        <Text color="gray">Owner: {l.agentName || l.sessionId}  Expires: {(l.expiresAt || '').slice(11, 19)}</Text>
+                      </Box>
+                    ))
+                  )}
+                  <Text bold color="yellow" marginTop={1}>Parallel Runs ({parallelRuns.length})</Text>
+                  {parallelRuns.length === 0 ? <Text color="gray"> No parallel runs.</Text> : (
+                    parallelRuns.slice(0, 4).map((r: any) => (
+                      <Box key={r.id} paddingX={1} marginY={1} borderStyle="round" borderColor="gray">
+                        <Text>Status: {r.status}  Agents: {(r.profiles || []).length}  Results: {(r.results || []).length}</Text>
+                        <Text color="gray">ID: {r.id?.slice(0, 20)}</Text>
+                      </Box>
+                    ))
+                  )}
+                </Box>
+                <Box flexGrow={1} flexDirection="column">
+                  <Text bold color="yellow">Recent Lock Audit</Text>
+                  {lockAudit.length === 0 ? <Text color="gray"> No audit records.</Text> : (
+                    lockAudit.slice(0, 8).map((a: any) => (
+                      <Text key={a.id}>[{a.event?.slice(0, 18).padEnd(18)}] {a.path || a.lockId || ''}</Text>
+                    ))
+                  )}
+                  <Text color="gray" marginTop={1}>CLI: ara locks list, ara locks cleanup, ara locks audit</Text>
+                  <Text color="gray">Slash: /locks list, /locks cleanup, /parallel-runs</Text>
+                </Box>
+              </Box>
+            </Box>
+          )}
+
+          {activeTab === 'Canvas' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="cyan">
+                <Text bold color="cyan">📋 Canvas Workspaces</Text>
+              </Box>
+              {!apiReachable ? (
+                <Text color="red">⚠️ API server is offline. Start the API to use Canvas.</Text>
+              ) : canvasWorkspaces.length === 0 ? (
+                <Text color="gray"> No canvas workspaces. Create one via CLI: ara canvas create &quot;My Workspace&quot;</Text>
+              ) : (
+                <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                  <Box width={40} flexDirection="column" marginRight={1}>
+                    <Text bold color="yellow">Workspaces ({canvasWorkspaces.length})</Text>
+                    {canvasWorkspaces.slice(0, 8).map((ws: any) => (
+                      <Box key={ws.id} paddingX={1} marginY={1} borderStyle="round" borderColor="gray">
+                        <Text bold color="cyan">{(ws.name || '').slice(0, 24)}</Text>
+                        <Text color="gray">ID: {(ws.id || '').slice(0, 12)}</Text>
+                        <Text color="gray">Created: {(ws.createdAt || '').slice(0, 10)}</Text>
+                      </Box>
+                    ))}
+                  </Box>
+                  <Box flexGrow={1} flexDirection="column">
+                    <Text bold color="yellow">Commands</Text>
+                    <Text color="gray">  ara canvas list              - List workspaces</Text>
+                    <Text color="gray">  ara canvas show &lt;id&gt;     - Show workspace</Text>
+                    <Text color="gray">  ara canvas create &lt;name&gt; - Create workspace</Text>
+                    <Text color="gray">  ara canvas export &lt;id&gt;   - Export workspace</Text>
+                    <Text color="gray">  ara canvas add-node &lt;id&gt; - Add node</Text>
+                    <Text color="gray">  Slash: /canvas list, /canvas create &lt;name&gt;</Text>
+                    <Text color="gray" marginTop={1}>Refreshes automatically every 5s</Text>
+                  </Box>
+                </Box>
               )}
             </Box>
           )}
@@ -474,6 +1171,48 @@ export function TuiApp() {
             </Box>
           )}
 
+          {activeTab === 'Learning' && (
+            <Box flexDirection="column" flexGrow={1}>
+              <Box borderStyle="classic" borderColor="green">
+                <Text bold color="green">🧠 Skill Learning</Text>
+              </Box>
+              {!apiReachable ? (
+                <Text color="red">⚠️ API server is offline.</Text>
+              ) : (
+                <Box flexDirection="row" flexGrow={1} marginTop={1}>
+                  <Box width={35} flexDirection="column" marginRight={1}>
+                    <Text bold color="yellow">Overview</Text>
+                    <Text color="gray">Workflows: {learningData?.workflowCount || 0}</Text>
+                    <Text color="gray">Repeated: {learningData?.repeatedCount || 0}</Text>
+                    <Text color="gray">Drafts: {learningDrafts.length}</Text>
+                    {learningDrafts.length > 0 && (
+                      <>
+                        <Text bold color="yellow" marginTop={1}>Drafts</Text>
+                        {learningDrafts.slice(0, 6).map((d: any) => (
+                          <Box key={d.id} paddingX={1}>
+                            <Text color="white">{(d.status || '').slice(0, 6).padEnd(8)} {(d.proposedSkillName || '').slice(0, 18)}</Text>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                  </Box>
+                  <Box flexGrow={1} flexDirection="column">
+                    <Text bold color="yellow">Commands</Text>
+                    <Text color="gray">ara skills suggest              - Overview</Text>
+                    <Text color="gray">ara skills workflows            - Repeated workflows</Text>
+                    <Text color="gray">ara skills analyze-recent       - Auto-detect patterns</Text>
+                    <Text color="gray">ara skills drafts               - List drafts</Text>
+                    <Text color="gray">ara skills draft &lt;id&gt;      - Show draft</Text>
+                    <Text color="gray">ara skills approve &lt;id&gt;    - Approve draft</Text>
+                    <Text color="gray">ara skills reject &lt;id&gt;     - Reject draft</Text>
+                    <Text color="gray" marginTop={1}>Slash: /skills suggest, /skills drafts</Text>
+                    <Text color="gray">Note: Approval requires explicit CLI command</Text>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+
           {activeTab === 'Audit' && (
             <Box flexDirection="column">
               <Box borderStyle="classic" borderColor="yellow">
@@ -500,6 +1239,7 @@ export function TuiApp() {
                 <Text>SQLite Engine status: {dbStatus}</Text>
                 <Text>Docker sandbox isolation: {sandboxMode ? 'Enabled' : 'Disabled'}</Text>
                 <Text>Active Permission Mode: {permissionMode.toUpperCase()}</Text>
+                <Text>LLM Provider Credentials: {hasSomeKeys ? 'CONFIGURED ✓' : 'MISSING ✗ (Warning)'}</Text>
                 <Text>Skills loaded count: {skills.length}</Text>
                 <Text>Episodic memories: {memories.length}</Text>
                 <Text>Workspace root: {process.cwd()}</Text>

@@ -1,94 +1,90 @@
-# 🛠️ Ara Development & Contribution Guide
+# Development Guide
 
-Welcome to the development environment of Ara. This document guides you through setting up, writing code, executing tests, and verifying release bundles.
+## Prerequisites
 
----
+- [Bun](https://bun.sh) v1.3+
+- Node.js 22+ (for compatibility)
 
-## 💻 Sandbox Environment Setup
+## Setup
 
-Ensure you have [Bun](https://bun.sh) (v1.1+) installed.
-
-1. **Clone & Install:**
-   ```bash
-   bun install
-   ```
-2. **Environment Configuration:**
-   Copy `.env.example` to `.env` and fill in API keys for at least one model provider.
-3. **Database initialization:**
-   Ara initializes `ara.sqlite` dynamically on first boot. No schema migrations or heavy setup steps are required.
-
----
-
-## 🏃 Running the Application
-
-### All Concurrently
 ```bash
+git clone <repo-url>
+cd ara
+bun install
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+## Development Commands
+
+```bash
+# Start all services
 bun run dev
+
+# Start individual services
+bun run dev:api     # Hono API on :3001
+bun run dev:web     # Vite frontend on :5173
+bun run dev:worker  # Background cron
+bun run dev:cli     # CLI / TUI
+
+# Build
+bun run build       # All apps
+bun run build:cli   # CLI binary only
+
+# Test
+bun test                     # All tests
+bun test "github"            # GitHub package tests
+bun test "skill_learning"    # Skill learning tests
+bun test tests/ara.test.ts   # Single test file
+
+# Typecheck
+bun run typecheck
+
+# Lint (tsc --noEmit)
+bun run lint
 ```
 
-### Isolated Sub-Apps
-- **Web Dashboard:** `bun run dev:web`
-- **Hono REST Gateway:** `bun run dev:api`
-- **Background Cron Worker:** `bun run dev:worker`
-- **CLI Gateway Command:** `bun run dev:cli status` (or `bun run dev:cli tui`)
+## Project Structure
 
----
-
-## 🧪 Testing and Quality Control
-
-Ara comes with a comprehensive, lightning-fast test suite running on native `bun:test`.
-
-### Run Test Suite
-```bash
-bun run test
+```
+apps/       — Application packages (api, web, worker, cli)
+packages/   — Library packages (13 packages)
+docs/       — Documentation
+skills/     — Skill procedure sheets (SKILL.md)
+memory/     — Memory files (USER.md, MEMORY.md)
+tests/      — Integration tests
+.ara/       — Runtime data (gitignored)
 ```
 
-The test suite validates:
-- Model router mapping & mock stream behaviors.
-- Path traversal blockers.
-- Secret leaks detector scanner.
-- File system checkpoints backups.
-- Approval states transitions.
-- Local memory search, indexers, and ranking.
-- Skill procedure frontmatter loading.
-- CLI Configuration manager persistence.
-- SSE Stream decoders event translations & mock REST contracts.
+## Package Dependencies
 
-### Run Typechecker
-Ensure zero TypeScript compilation errors before any release:
-- **Monorepo Core**: `bun run typecheck`
-- **CLI Sub-app**: `bun run typecheck:cli`
+All internal packages use `workspace:*` protocol. Packages generally depend upward:
+- `shared` is the foundation (types + schemas)
+- `tools`, `memory`, `skills`, `model-router` depend on `shared`
+- `permissions`, `hooks`, `commands`, `locks` depend on `shared`
+- `agent-core` wires all subsystems together
+- `apps/api` imports everything
 
-### Build & Package CLI
-To compile the standalone React Ink executable and bundle dependencies:
-```bash
-bun run build:cli
-```
-This produces `dist/main.js` and packs the Yoga flexbox WASM library `dist/yoga.wasm` automatically.
+## Adding a New Package
 
----
+1. Create `packages/<name>/` with `package.json`, `tsconfig.json`, `src/index.ts`
+2. Use `workspace:*` for internal deps
+3. Add to root `tsconfig.json` references
+4. Install: `bun install --cwd packages/<name>`
+5. Import in API routes as needed
 
-## 🔌 Adding a Custom Tool
+## Testing Guidelines
 
-To add a new tool to Ara's registry:
-1. Define a class implementing the `Tool` interface inside [packages/tools/src/index.ts](../packages/tools/src/index.ts).
-2. Specify Zod schemas for input validation:
-   ```typescript
-   export class CustomTool implements Tool {
-     name = 'custom_tool';
-     description = 'Describe what it does';
-     dangerLevel = 'safe' as const;
-     requiresApproval = false;
-     inputSchema = z.object({
-       param: z.string()
-     });
+- Use `bun:test` (not vitest)
+- Mock external APIs (no real credentials)
+- Keep tests deterministic
+- Test failure paths (permission denied, missing config, network errors)
+- No secrets in test files
 
-     async run(input: { param: string }, ctx: ToolContext): Promise<ToolResult> {
-       return { success: true, output: 'success' };
-     }
-   }
-   ```
-3. Register the tool in `apps/api/src/index.ts` under the `toolsRegistry` section:
-   ```typescript
-   toolsRegistry.register(new CustomTool());
-   ```
+## Code Style
+
+- TypeScript strict mode
+- ESM modules (`"type": "module"`)
+- No ESLint — use `tsc --noEmit`
+- Zod for runtime validation
+- Async/await preferred over raw promises

@@ -5,6 +5,7 @@ import {
   BookOpen, Plus, Clock 
 } from 'lucide-react';
 import './App.css';
+import { CanvasPage } from './Canvas';
 
 interface Message {
   id: string;
@@ -102,10 +103,24 @@ function App() {
 
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [automationRuns, setAutomationRuns] = useState<AutomationRun[]>([]);
+  const [page, _setPage] = useState("chat");
   const [newAutoName, setNewAutoName] = useState('');
   const [newAutoCron, setNewAutoCron] = useState('*/5 * * * *');
   const [newAutoPrompt, setNewAutoPrompt] = useState('');
   const [showAutoForm, setShowAutoForm] = useState(false);
+
+  // Onboarding Wizard States
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [openaiKeyInput, setOpenaiKeyInput] = useState('');
+  const [anthropicKeyInput, setAnthropicKeyInput] = useState('');
+  const [backendKeys, setBackendKeys] = useState({
+    GEMINI_API_KEY: false,
+    OPENAI_API_KEY: false,
+    ANTHROPIC_API_KEY: false
+  });
+
 
   const loadSessions = async () => {
     try {
@@ -288,9 +303,51 @@ function App() {
     }
   };
 
+  const checkKeysConfigured = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/config/keys`);
+      if (res.ok) {
+        const data = await res.json();
+        setBackendKeys(data);
+        const hasSomeKeys = data.GEMINI_API_KEY || data.OPENAI_API_KEY || data.ANTHROPIC_API_KEY;
+        const localOnboarded = localStorage.getItem('ara_onboarded') === 'true';
+        if (!localOnboarded || !hasSomeKeys) {
+          setShowOnboarding(true);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to query API key configurations', e);
+    }
+  };
+
+  const handleSaveKeys = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/config/keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          GEMINI_API_KEY: geminiKeyInput || undefined,
+          OPENAI_API_KEY: openaiKeyInput || undefined,
+          ANTHROPIC_API_KEY: anthropicKeyInput || undefined
+        })
+      });
+      if (res.ok) {
+        const keysRes = await fetch(`${API_BASE}/api/config/keys`);
+        if (keysRes.ok) {
+          const keysData = await keysRes.json();
+          setBackendKeys(keysData);
+        }
+        setOnboardingStep(3);
+      }
+    } catch (err) {
+      console.error('Failed to save API keys', err);
+    }
+  };
+
   // Load active sessions on mount
   useEffect(() => {
     const init = async () => {
+      await checkKeysConfigured();
       await loadSessions();
       await loadModels();
       await loadMemories();
@@ -549,6 +606,7 @@ function App() {
     }
   };
 
+  if (page === "canvas") { return <CanvasPage />; }
   return (
     <div className="ara-container">
       {/* Upper Glassmorphic Navbar */}
@@ -868,8 +926,187 @@ function App() {
 
         </section>
       </main>
+
+      {showOnboarding && (
+        <div className="onboarding-overlay">
+          <div className="onboarding-card">
+            <div className="onboarding-header">
+              <div className="onboarding-logo">
+                <Bot size={32} />
+              </div>
+              <h2 className="onboarding-title">ยินดีต้อนรับสู่ Ara AI Control Plane</h2>
+              <p className="onboarding-subtitle">
+                Ara คือระบบปัญญาประดิษฐ์ส่วนตัว (Personal AI Control Plane) ที่ทำงานแบบ Local-first ปลอดภัย และควบคุมสิทธิ์การเขียนอ่านไฟล์และรันคำสั่งได้ 100%
+              </p>
+            </div>
+
+            {onboardingStep === 1 && (
+              <div className="onboarding-body">
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'var(--color-cyan)' }}>ฟีเจอร์เด่นของ Ara:</h4>
+                <div className="feature-list">
+                  <div className="feature-item">
+                    <div className="feature-icon-wrapper">
+                      <Terminal size={16} />
+                    </div>
+                    <div>
+                      <div className="feature-title">ReAct Agent Runtime Loop</div>
+                      <div className="feature-desc">คิด วางแผน และเรียกใช้งานเครื่องมืออย่างชาญฉลาดผ่านคำสั่ง XML tags</div>
+                    </div>
+                  </div>
+                  <div className="feature-item">
+                    <div className="feature-icon-wrapper">
+                      <ShieldAlert size={16} />
+                    </div>
+                    <div>
+                      <div className="feature-title">Approval Gate & Permissions Engine</div>
+                      <div className="feature-desc">ควบคุมความปลอดภัยขั้นสูงสุด ป้องกัน path traversal และรหัสลับของคุณก่อนถูกเรียกใช้</div>
+                    </div>
+                  </div>
+                  <div className="feature-item">
+                    <div className="feature-icon-wrapper">
+                      <Database size={16} />
+                    </div>
+                    <div>
+                      <div className="feature-title">Local-first Memory & Skills</div>
+                      <div className="feature-desc">จัดเก็บข้อมูลความทรงจำ ทักษะ และประวัติการรันผ่านระบบฐานข้อมูล SQLite และ Markdown ในเครื่อง</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {onboardingStep === 2 && (
+              <div className="onboarding-body">
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--color-cyan)' }}>ตั้งค่า API Keys เพื่อเริ่มต้นใช้งาน:</h4>
+                <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+                  กรอก API Keys ของผู้ให้บริการที่คุณต้องการใช้ (ข้อมูลจะถูกจัดเก็บลงไฟล์ <code>.env</code> ภายในเครื่องของคุณเท่านั้น ไม่มีการส่งไปที่อื่น):
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="key-input-group">
+                    <div className="key-label">
+                      <span>Gemini API Key (แนะนำสำหรับการวางแผนรวดเร็ว)</span>
+                      {backendKeys.GEMINI_API_KEY ? (
+                        <span className="badge-configured">ตั้งค่าแล้วในระบบ</span>
+                      ) : (
+                        <span className="badge-missing">ยังไม่ได้ตั้งค่า</span>
+                      )}
+                    </div>
+                    <input 
+                      type="password"
+                      className="key-input-field"
+                      value={geminiKeyInput}
+                      onChange={(e) => setGeminiKeyInput(e.target.value)}
+                      placeholder={backendKeys.GEMINI_API_KEY ? "••••••••••••••••" : "กรอก Gemini API Key..."}
+                    />
+                  </div>
+
+                  <div className="key-input-group">
+                    <div className="key-label">
+                      <span>OpenAI API Key</span>
+                      {backendKeys.OPENAI_API_KEY ? (
+                        <span className="badge-configured">ตั้งค่าแล้วในระบบ</span>
+                      ) : (
+                        <span className="badge-missing">ยังไม่ได้ตั้งค่า</span>
+                      )}
+                    </div>
+                    <input 
+                      type="password"
+                      className="key-input-field"
+                      value={openaiKeyInput}
+                      onChange={(e) => setOpenaiKeyInput(e.target.value)}
+                      placeholder={backendKeys.OPENAI_API_KEY ? "••••••••••••••••" : "กรอก OpenAI API Key..."}
+                    />
+                  </div>
+
+                  <div className="key-input-group">
+                    <div className="key-label">
+                      <span>Anthropic API Key</span>
+                      {backendKeys.ANTHROPIC_API_KEY ? (
+                        <span className="badge-configured">ตั้งค่าแล้วในระบบ</span>
+                      ) : (
+                        <span className="badge-missing">ยังไม่ได้ตั้งค่า</span>
+                      )}
+                    </div>
+                    <input 
+                      type="password"
+                      className="key-input-field"
+                      value={anthropicKeyInput}
+                      onChange={(e) => setAnthropicKeyInput(e.target.value)}
+                      placeholder={backendKeys.ANTHROPIC_API_KEY ? "••••••••••••••••" : "กรอก Anthropic API Key..."}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {onboardingStep === 3 && (
+              <div className="onboarding-body" style={{ textAlign: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(57, 255, 20, 0.1)', color: 'var(--color-neon-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(57, 255, 20, 0.3)', margin: '0 auto' }}>
+                    <Check size={24} />
+                  </div>
+                </div>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', color: 'var(--color-neon-green)', textAlign: 'center' }}>เชื่อมต่อและตั้งค่าเรียบร้อย!</h4>
+                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6, margin: '0 0 16px 0' }}>
+                  บันทึก API Keys ลงระบบเรียบร้อยแล้ว คุณสามารถตรวจสอบสถานะการเชื่อมต่อ และควบคุมสิทธิ์ของเครื่องมือทุกอย่างได้โดยตรงผ่านแผงควบคุมหลัก
+                </p>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '11px', textAlign: 'left', lineHeight: 1.5 }}>
+                  <strong>คำแนะนำการคุย:</strong> คุณสามารถพิมพ์ทดสอบด้วยคำสั่งเช่น <code>รันไฟล์ test.js</code> หรือ <code>เขียนโค้ดแสดงเวลา</code> เพื่อเห็นระบบวิเคราะห์ความปลอดภัยและการส่งต่อเรื่องให้ Approval Gate ทำงานจริง!
+                </div>
+              </div>
+            )}
+
+            <div className="onboarding-footer">
+              <div className="step-indicator">ขั้นตอน {onboardingStep} จาก 3</div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {onboardingStep > 1 && onboardingStep < 3 && (
+                  <button 
+                    type="button" 
+                    className="btn-onboarding-back"
+                    onClick={() => setOnboardingStep(prev => prev - 1)}
+                  >
+                    ย้อนกลับ
+                  </button>
+                )}
+                {onboardingStep === 1 && (
+                  <button 
+                    type="button" 
+                    className="btn-onboarding-next"
+                    onClick={() => setOnboardingStep(2)}
+                  >
+                    เริ่มตั้งค่า <ArrowRight size={16} />
+                  </button>
+                )}
+                {onboardingStep === 2 && (
+                  <button 
+                    type="button" 
+                    className="btn-onboarding-next"
+                    onClick={handleSaveKeys}
+                  >
+                    บันทึกและตรวจสอบ <Check size={16} />
+                  </button>
+                )}
+                {onboardingStep === 3 && (
+                  <button 
+                    type="button" 
+                    className="btn-onboarding-next"
+                    onClick={() => {
+                      localStorage.setItem('ara_onboarded', 'true');
+                      setShowOnboarding(false);
+                    }}
+                  >
+                    เข้าสู่แดชบอร์ด Ara <ArrowRight size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default App;
+

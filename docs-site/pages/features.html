@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Features — Ara</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>Features</h1>
+  <p>All subsystems and capabilities.</p>
+
+  <!-- Permission Engine -->
+  <h2 id="permissions">Permission Engine</h2>
+  <p>5 security modes with 21 default deny rules. Every tool call evaluated before execution.</p>
+  <div class="section-block">
+    <h3>Modes</h3>
+    <table>
+      <tr><th>Mode</th><th>Behavior</th></tr>
+      <tr><td><code>plan</code></td><td>All tool calls ask for approval</td></tr>
+      <tr><td><code>default</code></td><td>Safe tools allowed; write/dangerous ask</td></tr>
+      <tr><td><code>accept-edits</code></td><td>File reads allowed; mutating writes ask</td></tr>
+      <tr><td><code>auto-safe</code></td><td>Only safe tools allowed</td></tr>
+      <tr><td><code>danger-review</code></td><td>All tools require review</td></tr>
+    </table>
+  </div>
+  <div class="section-block">
+    <h3>Default Deny Rules</h3>
+    <p>Credential files: <code>.env*</code>, <code>.ssh/**</code>, <code>.aws/**</code>, <code>.config/gcloud/**</code></p>
+    <p>Private keys: <code>*.pem</code>, <code>*.key</code>, <code>id_rsa</code>, <code>id_ecdsa</code>, <code>id_ed25519</code></p>
+    <p>Dangerous commands: <code>rm -rf</code>, <code>sudo</code>, <code>curl|sh</code>, reverse shells, <code>DROP TABLE</code>, <code>printenv</code></p>
+  </div>
+
+  <!-- MCP -->
+  <h2 id="mcp">MCP / External Tools</h2>
+  <p>Model Context Protocol integration for external tool servers.</p>
+  <div class="section-block">
+    <h3>Transports</h3>
+    <ul>
+      <li><strong>stdio</strong> — Child process with JSON-RPC 2.0 over stdin/stdout</li>
+      <li><strong>HTTP</strong> — JSON-RPC 2.0 POST with configurable timeout</li>
+    </ul>
+    <h3>Safety</h3>
+    <ul>
+      <li>10 evaluation paths in permission mapper</li>
+      <li>Untrusted servers: shell denied, mutating asks, file asks</li>
+      <li>Full process.env never passed — strict env scoping</li>
+      <li>API keys redacted in audit logs</li>
+    </ul>
+    <h3>Lifecycle</h3>
+    <p><code>stopped → starting → healthy → unhealthy/error</code></p>
+  </div>
+
+  <!-- GitHub -->
+  <h2 id="github">GitHub Integration</h2>
+  <p>13 tools through the Tool Registry. Write operations require approval.</p>
+  <div class="section-block">
+    <h3>Read Tools</h3>
+    <p><code>get_repo</code>, <code>list_issues</code>, <code>get_issue</code>, <code>list_pull_requests</code>, <code>get_pull_request</code>, <code>get_pull_request_files</code>, <code>get_pull_request_diff</code>, <code>list_check_runs</code>, <code>list_workflow_runs</code>, <code>get_workflow_run</code></p>
+    <h3>Write Tools</h3>
+    <p><code>create_issue</code>, <code>comment_issue</code>, <code>create_pull_request_review</code></p>
+    <h3>Safety</h3>
+    <ul>
+      <li>Token from env var only — never stored in config</li>
+      <li>Redacted in all audit logs</li>
+      <li>Subagents cannot write</li>
+      <li>Repo allowlist enforcement</li>
+    </ul>
+  </div>
+
+  <!-- Subagents -->
+  <h2 id="subagents">Subagents</h2>
+  <p>Read-only delegated agents with profile-based configuration.</p>
+  <ul>
+    <li>Tool allowlist with namespace wildcards (<code>mcp.github.*</code>)</li>
+    <li>Parallel scheduling with concurrency control</li>
+    <li>Deterministic result merging</li>
+    <li>AbortController-based cancellation</li>
+    <li>Cannot write, self-approve, or manage MCP servers</li>
+  </ul>
+
+  <!-- Locks -->
+  <h2 id="locks">File Locks</h2>
+  <table>
+    <tr><th>Existing</th><th>Requested</th><th>Result</th></tr>
+    <tr><td>read</td><td>read</td><td>Allowed</td></tr>
+    <tr><td>read</td><td>write</td><td>Blocked</td></tr>
+    <tr><td>write</td><td>read</td><td>Blocked</td></tr>
+    <tr><td>write</td><td>write</td><td>Blocked</td></tr>
+  </table>
+  <p>Fail-closed by default. Deadlock detection. TTL-based expiry. Persistent JSONL audit.</p>
+
+  <!-- Checkpoints -->
+  <h2 id="checkpoints">Checkpoints</h2>
+  <ul>
+    <li>Automatic before mutating tool execution</li>
+    <li>Manual via CLI: <code>ara checkpoint create &lt;reason&gt;</code></li>
+    <li>Diff viewer: <code>ara checkpoint diff &lt;id&gt;</code></li>
+    <li>Restore modes: code_only, conversation_only, both</li>
+  </ul>
+
+  <!-- Canvas -->
+  <h2 id="canvas">Canvas Workspace</h2>
+  <p>13 node types, 5 edge types. File-based persistence at <code>.ara/canvas/workspaces/</code>.</p>
+  <p>Node types: <code>chat</code>, <code>session</code>, <code>task</code>, <code>file</code>, <code>artifact</code>, <code>memory</code>, <code>skill</code>, <code>subagent</code>, <code>github_issue</code>, <code>github_pr</code>, <code>mcp_tool</code>, <code>checkpoint</code>, <code>note</code></p>
+
+  <!-- Skill Learning -->
+  <h2 id="skill-learning">Skill Learning</h2>
+  <ol>
+    <li>Workflow fingerprints detected from session transcripts</li>
+    <li>At 3+ repetitions, a draft is auto-generated</li>
+    <li>Draft saved to <code>.ara/skill-drafts/&lt;id&gt;.json</code> (secrets redacted)</li>
+    <li>User reviews via CLI: <code>ara skills draft &lt;id&gt;</code></li>
+    <li>Approval writes <code>skills/&lt;name&gt;/SKILL.md</code> with versioning</li>
+  </ol>
+
+  <!-- Hooks -->
+  <h2 id="hooks">Lifecycle Hooks</h2>
+  <p>18 event types supporting command and HTTP execution.</p>
+  <table>
+    <tr><th>Category</th><th>Events</th></tr>
+    <tr><td>Session</td><td>SessionStart, UserPromptSubmit, SessionEnd, Stop</td></tr>
+    <tr><td>Tool</td><td>PreToolUse, PostToolUse, ToolFailed</td></tr>
+    <tr><td>Approval</td><td>ApprovalRequested, ApprovalResolved</td></tr>
+    <tr><td>Checkpoint</td><td>CheckpointCreated</td></tr>
+    <tr><td>MCP</td><td>MCPServerStart/Stop, MCPToolDiscovered, MCPToolCallStart/End/Failed</td></tr>
+    <tr><td>GitHub</td><td>GitHubActionStart/End/Failed, GitHubWriteApprovalRequested</td></tr>
+    <tr><td>Lock</td><td>LockAcquired, LockReleased, LockConflict, LockExpired</td></tr>
+    <tr><td>Subagent</td><td>ParallelSubagentsStart/Complete/Failed</td></tr>
+  </table>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="security.html" class="btn btn-primary">Security Model</a>
+    <a href="cli.html" class="btn btn-secondary">CLI Reference</a>
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

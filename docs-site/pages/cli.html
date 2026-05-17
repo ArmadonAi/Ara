@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLI Reference — Ara</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <h1>CLI Reference</h1>
+  <p>40+ commands across all subsystems.</p>
+
+  <h2>Global</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara</code></td><td>Open TUI dashboard</td></tr>
+    <tr><td><code>ara tui</code></td><td>Open TUI</td></tr>
+    <tr><td><code>ara chat [prompt]</code></td><td>Chat with AI</td></tr>
+    <tr><td><code>ara doctor</code></td><td>System diagnostics</td></tr>
+    <tr><td><code>ara status</code></td><td>API status</td></tr>
+  </table>
+
+  <h2>Approvals</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara approvals</code></td><td>List pending approvals</td></tr>
+    <tr><td><code>ara approve &lt;id&gt;</code></td><td>Approve tool execution</td></tr>
+    <tr><td><code>ara reject &lt;id&gt;</code></td><td>Reject tool execution</td></tr>
+  </table>
+
+  <h2>Permissions</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara permissions</code></td><td>View permission mode</td></tr>
+    <tr><td><code>ara permissions mode &lt;mode&gt;</code></td><td>Set permission mode (plan, default, accept-edits, auto-safe, danger-review)</td></tr>
+  </table>
+
+  <h2>Hooks</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara hooks</code></td><td>View hook configuration</td></tr>
+    <tr><td><code>ara hooks validate</code></td><td>Validate settings.json</td></tr>
+  </table>
+
+  <h2>Sessions</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara sessions</code></td><td>List sessions</td></tr>
+    <tr><td><code>ara compact</code></td><td>Compact active session</td></tr>
+  </table>
+
+  <h2>Checkpoints</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara checkpoints</code></td><td>List checkpoints</td></tr>
+    <tr><td><code>ara checkpoint create &lt;reason&gt;</code></td><td>Create checkpoint</td></tr>
+    <tr><td><code>ara checkpoint show &lt;id&gt;</code></td><td>Show checkpoint</td></tr>
+    <tr><td><code>ara checkpoint diff &lt;id&gt;</code></td><td>Diff checkpoint</td></tr>
+    <tr><td><code>ara restore &lt;id&gt; [mode]</code></td><td>Restore checkpoint</td></tr>
+  </table>
+
+  <h2>MCP</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara mcp servers</code></td><td>List servers</td></tr>
+    <tr><td><code>ara mcp server &lt;id&gt;</code></td><td>Server details</td></tr>
+    <tr><td><code>ara mcp start &lt;id&gt;</code></td><td>Start server</td></tr>
+    <tr><td><code>ara mcp stop &lt;id&gt;</code></td><td>Stop server</td></tr>
+    <tr><td><code>ara mcp restart &lt;id&gt;</code></td><td>Restart server</td></tr>
+    <tr><td><code>ara mcp tools [id]</code></td><td>List tools</td></tr>
+    <tr><td><code>ara mcp call &lt;name&gt; --json</code></td><td>Call tool</td></tr>
+    <tr><td><code>ara mcp health</code></td><td>Health check</td></tr>
+    <tr><td><code>ara mcp refresh [id]</code></td><td>Refresh tools</td></tr>
+    <tr><td><code>ara mcp reconnect &lt;id&gt;</code></td><td>Reconnect server</td></tr>
+    <tr><td><code>ara mcp validate</code></td><td>Validate config</td></tr>
+  </table>
+
+  <h2>GitHub</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara github status</code></td><td>Integration status</td></tr>
+    <tr><td><code>ara github issues [o/r]</code></td><td>List issues</td></tr>
+    <tr><td><code>ara github prs [o/r]</code></td><td>List PRs</td></tr>
+    <tr><td><code>ara github pr &lt;n&gt; [o/r]</code></td><td>PR details</td></tr>
+    <tr><td><code>ara github checks &lt;ref&gt; [o/r]</code></td><td>Check runs</td></tr>
+    <tr><td><code>ara github runs [o/r]</code></td><td>Workflow runs</td></tr>
+    <tr><td><code>ara github issue-create --title</code></td><td>Create issue (write, approval)</td></tr>
+    <tr><td><code>ara github issue-comment &lt;n&gt; --body</code></td><td>Comment issue (write, approval)</td></tr>
+    <tr><td><code>ara github pr-review &lt;n&gt; --body</code></td><td>PR review (write, approval)</td></tr>
+  </table>
+
+  <h2>Canvas</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara canvas list</code></td><td>List workspaces</td></tr>
+    <tr><td><code>ara canvas create &lt;name&gt;</code></td><td>Create workspace</td></tr>
+    <tr><td><code>ara canvas show &lt;id&gt;</code></td><td>Show workspace</td></tr>
+    <tr><td><code>ara canvas delete &lt;id&gt;</code></td><td>Delete workspace</td></tr>
+    <tr><td><code>ara canvas add-node &lt;id&gt; --type --title</code></td><td>Add node</td></tr>
+    <tr><td><code>ara canvas add-edge &lt;id&gt; &lt;from&gt; &lt;to&gt;</code></td><td>Add edge</td></tr>
+    <tr><td><code>ara canvas export &lt;id&gt; [--out]</code></td><td>Export JSON</td></tr>
+  </table>
+
+  <h2>Locks</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara locks list</code></td><td>List active locks</td></tr>
+    <tr><td><code>ara locks acquire &lt;path&gt; --mode</code></td><td>Acquire lock</td></tr>
+    <tr><td><code>ara locks release &lt;id&gt;</code></td><td>Release lock</td></tr>
+    <tr><td><code>ara locks force-release &lt;id&gt; --reason</code></td><td>Force release</td></tr>
+    <tr><td><code>ara locks cleanup</code></td><td>Clean expired locks</td></tr>
+    <tr><td><code>ara locks audit</code></td><td>View lock audit</td></tr>
+  </table>
+
+  <h2>Skills</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara skills suggest</code></td><td>Learning overview</td></tr>
+    <tr><td><code>ara skills workflows</code></td><td>Repeated workflows</td></tr>
+    <tr><td><code>ara skills analyze-recent</code></td><td>Auto-detect patterns</td></tr>
+    <tr><td><code>ara skills analyze-session &lt;id&gt;</code></td><td>Analyze session</td></tr>
+    <tr><td><code>ara skills drafts</code></td><td>List drafts</td></tr>
+    <tr><td><code>ara skills draft &lt;id&gt;</code></td><td>Show draft</td></tr>
+    <tr><td><code>ara skills approve &lt;id&gt;</code></td><td>Approve draft</td></tr>
+    <tr><td><code>ara skills reject &lt;id&gt;</code></td><td>Reject draft</td></tr>
+    <tr><td><code>ara skills stats</code></td><td>Usage statistics</td></tr>
+  </table>
+
+  <h2>Subagents</h2>
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>ara subagents list</code></td><td>List profiles</td></tr>
+    <tr><td><code>ara subagents run &lt;name&gt; &lt;task&gt;</code></td><td>Run subagent</td></tr>
+    <tr><td><code>ara subagents-parallel run &lt;a1,a2&gt; &lt;task&gt;</code></td><td>Run parallel</td></tr>
+    <tr><td><code>ara subagents-parallel runs</code></td><td>List parallel runs</td></tr>
+    <tr><td><code>ara subagents-parallel cancel &lt;id&gt;</code></td><td>Cancel parallel run</td></tr>
+  </table>
+
+  <div style="text-align:center;margin:40px 0">
+    <a href="get-started.html" class="btn btn-primary">Get Started</a>
+    <a href="../index.html" class="btn btn-secondary">Home</a>
+  </div>
+</main>
+<script src="../include.js"></script>
+</body>
+</html>

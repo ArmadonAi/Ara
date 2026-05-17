@@ -1,0 +1,18 @@
+{
+  "hooks": [
+    {
+      "name": "workspace-integrity",
+      "type": "command",
+      "events": ["SessionStart"],
+      "command": "git diff-index --quiet HEAD --",
+      "timeoutMs": 3000
+    },
+    {
+      "name": "notify-webhook",
+      "type": "http",
+      "events": ["PreToolUse"],
+      "url": "https://hooks.example.com/ara-events",
+      "timeoutMs": 2000
+    }
+  ]
+}

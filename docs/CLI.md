@@ -225,6 +225,70 @@ Checkpoints capture workspace file states and session transcript snapshots, enab
 
   Outputs the recent list of immutable tool audit logs (with status and truncated responses).
 
+### 10. File Lock Commands
+
+* **Acquire Lock**:
+
+  ```bash
+  ara locks acquire <path> --mode read|write [--ttl <ms>]
+  ```
+
+* **Release Lock**:
+
+  ```bash
+  ara locks release <lockId>
+  ```
+
+* **Force-Release Lock**:
+
+  ```bash
+  ara locks force-release <lockId> --reason "<reason>"
+  ```
+
+* **List Locks**:
+
+  ```bash
+  ara locks list [--status active|released|expired]
+  ```
+
+* **Cleanup Expired Locks**:
+
+  ```bash
+  ara locks cleanup
+  ```
+
+* **View Lock Audit**:
+
+  ```bash
+  ara locks audit [--limit <n>]
+  ```
+
+### 11. Parallel Subagent Commands
+
+* **Run Parallel Subagents**:
+
+  ```bash
+  ara subagents-parallel run <agent1,agent2,...> "<task>" [--concurrency <n>]
+  ```
+
+* **List Parallel Runs**:
+
+  ```bash
+  ara subagents-parallel runs
+  ```
+
+* **Get Parallel Run Info**:
+
+  ```bash
+  ara subagents-parallel run-info <id>
+  ```
+
+* **Cancel Parallel Run**:
+
+  ```bash
+  ara subagents-parallel cancel <id>
+  ```
+
 ---
 
 ## 🎮 TUI Layout Keyboard Shortcuts

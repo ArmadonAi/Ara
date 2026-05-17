@@ -17,6 +17,7 @@
     "@ara/shared": "workspace:*",
     "@ara/commands": "workspace:*",
     "@ara/permissions": "workspace:*",
+    "@ara/checkpoints": "workspace:*",
     "commander": "^11.1.0",
     "ink": "^4.4.1",
     "react": "^18.2.0",
