@@ -21,7 +21,7 @@ Ara is designed as a Bun workspace monorepo. Please ensure you have the followin
 To set up your local development workspace:
 ```bash
 # Clone the repository
-git clone https://github.com/JonusNattapong/Ara.git
+git clone https://github.com/ArmadonAi/Ara.git
 cd Ara
 
 # Install and link monorepo packages

@@ -26,12 +26,12 @@ Safety Pipeline:
 ```json
 {
   "enabled": true,
-  "defaultOwner": "JonusNattapong",
+  "defaultOwner": "ArmadonAi",
   "defaultRepo": "Ara",
   "apiBaseUrl": "https://api.github.com",
   "tokenEnv": "GITHUB_TOKEN",
   "permissionMode": "default",
-  "allowedRepos": ["JonusNattapong/Ara"],
+  "allowedRepos": ["ArmadonAi/Ara"],
   "readOnly": false
 }
 ```

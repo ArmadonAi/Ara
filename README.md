@@ -1,4 +1,16 @@
-# Ara: Personal AI Control Plane (v0.1-RC1)
+# Ara
+
+## Badge
+
+![Release](https://img.shields.io/github/v/tag/DrakonArt/Ara?color=blue&label=Release&style=for-the-badge)
+![License](https://img.shields.io/github/license/DrakonArt/Ara?style=for-the-badge)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict--only-3178c6?style=for-the-badge&logo=typescript)
+![Bun](https://img.shields.io/badge/Bun-fast-000000?style=for-the-badge&logo=bun)
+![Tests](https://img.shields.io/badge/318_Tests_Passing-green?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Early_development-red?style=for-the-badge)
+![Language](https://img.shields.io/badge/Language-TypeScript-3178c6?style=for-the-badge&logo=typescript)
+
+## Description
 
 Ara is a secure, local-first personal AI assistant and autonomous workspace control plane. Developed as an integrated Bun monorepo, Ara delivers a high-integrity runtime environment featuring web dashboards, terminal interfaces, fine-grained safety policies, MCP external tool integration, GitHub integration, read-only subagents, checkpoint/rewind, and an extensible lifecycle hooks architecture.
 
@@ -50,19 +62,23 @@ packages/
 ## Installation and Setup
 
 ### 1. Prerequisites
+
 [Bun](https://bun.sh) v1.3+ is required.
 
 ### 2. Dependency Installation
+
 ```bash
 bun install
 ```
 
 ### 3. Environment Configuration
+
 ```bash
 cp .env.example .env
 ```
 
 Populate the environment variables:
+
 ```ini
 GEMINI_API_KEY=AIza...
 OPENAI_API_KEY=sk-...
@@ -73,7 +89,9 @@ USE_DOCKER_SANDBOX=false
 ```
 
 ### 4. MCP Configuration (Optional)
+
 Create `.ara/mcp.json` to register MCP tool servers:
+
 ```json
 {
   "servers": [
@@ -91,7 +109,9 @@ Create `.ara/mcp.json` to register MCP tool servers:
 ```
 
 ### 5. GitHub Configuration (Optional)
+
 Create `.ara/github.json`:
+
 ```json
 {
   "enabled": true,
@@ -179,6 +199,7 @@ Ara integrates with the Model Context Protocol (MCP) for external tool servers.
 **Transports**: stdio (child process) and HTTP (JSON-RPC 2.0)
 
 **Safety pipeline**:
+
 1. Permission Engine evaluation (10 evaluation paths)
 2. PreToolUse / PostToolUse / ToolFailed hooks
 3. Checkpoint creation for mutating tools
@@ -224,7 +245,9 @@ Ara provides 13 GitHub tools through the Tool Registry.
 ## Configuration
 
 ### `.ara/settings.json`
+
 Lifecycle hooks configuration (local or `~/.ara/settings.json`):
+
 ```json
 {
   "hooks": [
@@ -240,22 +263,24 @@ Lifecycle hooks configuration (local or `~/.ara/settings.json`):
 ```
 
 ### `.ara/mcp.json`
+
 MCP server configuration — see [docs/MCP.md](docs/MCP.md).
 
 ### `.ara/github.json`
+
 GitHub integration configuration — see [docs/GITHUB.md](docs/GITHUB.md).
 
 ---
 
 ## Documentation
 
-- [Architecture & Design](docs/ARCHITECTURE.md)
-- [API Reference](docs/API.md)
-- [CLI Reference](docs/CLI.md)
-- [Permission Model](docs/PERMISSIONS.md)
-- [Hooks System](docs/HOOKS.md)
-- [Checkpoints & Rewind](docs/CHECKPOINTS.md)
-- [Subagents](docs/SUBAGENTS.md)
-- [MCP / External Tools](docs/MCP.md)
-- [GitHub Integration](docs/GITHUB.md)
-- [Release Checklist](docs/RELEASE_CHECKLIST.md)
+* [Architecture & Design](docs/ARCHITECTURE.md)
+* [API Reference](docs/API.md)
+* [CLI Reference](docs/CLI.md)
+* [Permission Model](docs/PERMISSIONS.md)
+* [Hooks System](docs/HOOKS.md)
+* [Checkpoints & Rewind](docs/CHECKPOINTS.md)
+* [Subagents](docs/SUBAGENTS.md)
+* [MCP / External Tools](docs/MCP.md)
+* [GitHub Integration](docs/GITHUB.md)
+* [Release Checklist](docs/RELEASE_CHECKLIST.md)
