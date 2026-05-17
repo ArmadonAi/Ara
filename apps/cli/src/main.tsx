@@ -2509,4 +2509,124 @@ hermesCmd
     }
   });
 
+
+// -------------------------------------------------------------
+// Maintenance Commands
+// -------------------------------------------------------------
+program
+  .command('maintenance')
+  .description('System maintenance tasks (JSONL compaction, stats)')
+  .action(() => {
+    console.log('\nUsage: ara maintenance <command>\n');
+    console.log('  ara maintenance compact     Compact JSONL audit files');
+    console.log('  ara maintenance stats       Show JSONL file sizes\n');
+  });
+
+program
+  .command('maintenance compact')
+  .description('Compact JSONL audit files — keep only recent entries')
+  .option('--keep <n>', 'Number of recent entries to keep', parseInt, 1000)
+  .option('--dir <path>', 'Specific JSONL directory to compact')
+  .action(async (opts: { keep?: number; dir?: string }) => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { compactJSONL, compactJSONLDir, getJSONLDirStats, getJSONLSize } = require('./packages/tools/src/maintenance.ts');
+    const cwd = process.cwd();
+    const keep = Math.max(opts.keep || 1000, 100);
+    let totalRemoved = 0;
+
+    const dirs = opts.dir ? [opts.dir] : [
+      path.join(cwd, '.ara', 'sessions'),
+      path.join(cwd, '.ara', 'audit'),
+      path.join(cwd, '.ara', 'skill-learning'),
+    ];
+
+    console.log('\nCompacting JSONL files (keeping last ' + keep + ' entries per file)...\n');
+
+    for (const dir of dirs) {
+      if (!fs.existsSync(dir)) { console.log('  ~ ' + dir + ' (not found)'); continue; }
+      const stats = getJSONLDirStats(dir);
+      if (stats.files === 0) { console.log('  ~ ' + dir + ' (no JSONL files)'); continue; }
+      console.log('  ' + dir + ': ' + stats.files + ' files, ' + (stats.totalBytes / 1024).toFixed(1) + ' KB, ' + stats.totalLines + ' lines');
+
+      if (opts.dir) {
+        // Single directory mode — compact each file
+        const r = compactJSONLDir(dir, keep);
+        for (const [file, result] of Object.entries(r.results)) {
+          if (result.removedLines > 0) {
+            console.log('    ' + file + ': removed ' + result.removedLines + ' lines');
+            totalRemoved += result.removedLines;
+          }
+        }
+      } else {
+        // Smart mode — compact specific known files
+        const knownFiles = [
+          path.join(dir, '..', 'audit', 'mcp.jsonl'),
+          path.join(dir, '..', 'audit', 'locks.jsonl'),
+        ];
+        for (const fp of knownFiles) {
+          if (fs.existsSync(fp)) {
+            const r = compactJSONL(fp, keep);
+            if (r.removedLines > 0) {
+              console.log('    ' + path.basename(fp) + ': removed ' + r.removedLines + ' lines (' + r.originalLines + ' -> ' + r.keptLines + ')');
+              totalRemoved += r.removedLines;
+            }
+          }
+        }
+        // Compact session transcripts
+        const r = compactJSONLDir(dir, keep);
+        for (const [file, result] of Object.entries(r.results)) {
+          if (result.removedLines > 0) {
+            console.log('    ' + file + ': removed ' + result.removedLines + ' lines (' + result.originalLines + ' -> ' + result.keptLines + ')');
+            totalRemoved += result.removedLines;
+          }
+        }
+      }
+    }
+
+    console.log('\nDone. Removed ' + totalRemoved + ' lines total.\n');
+  });
+
+program
+  .command('maintenance stats')
+  .description('Show JSONL file storage statistics')
+  .action(async () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { getJSONLDirStats, getJSONLSize } = require('./packages/tools/src/maintenance.ts');
+    const cwd = process.cwd();
+
+    const targets: { name: string; dir: string }[] = [
+      { name: 'Session transcripts', dir: path.join(cwd, '.ara', 'sessions') },
+      { name: 'Audit logs', dir: path.join(cwd, '.ara', 'audit') },
+      { name: 'Skill learning', dir: path.join(cwd, '.ara', 'skill-learning') },
+      { name: 'Canvas workspaces', dir: path.join(cwd, '.ara', 'canvas', 'workspaces') },
+      { name: 'Skill drafts', dir: path.join(cwd, '.ara', 'skill-drafts') },
+    ];
+
+    let totalBytes = 0;
+    let totalFiles = 0;
+    let totalLines = 0;
+
+    console.log('\nJSONL Storage Statistics:\n');
+
+    for (const t of targets) {
+      if (!fs.existsSync(t.dir)) { console.log('  ' + t.name.padEnd(25) + ' (empty)'); continue; }
+      const stats = getJSONLDirStats(t.dir);
+      if (stats.files === 0) {
+        // Check if there are non-JSONL files
+        const files = fs.readdirSync(t.dir).filter((f: string) => !f.endsWith('.jsonl'));
+        console.log('  ' + t.name.padEnd(25) + ' ' + files.length + ' files (non-JSONL)');
+        continue;
+      }
+      const sizeKB = (stats.totalBytes / 1024).toFixed(1);
+      console.log('  ' + t.name.padEnd(25) + ' ' + stats.files + ' files, ' + sizeKB + ' KB, ' + stats.totalLines + ' lines');
+      totalBytes += stats.totalBytes;
+      totalFiles += stats.files;
+      totalLines += stats.totalLines;
+    }
+
+    console.log('\n  Total: ' + totalFiles + ' files, ' + (totalBytes / 1024).toFixed(1) + ' KB, ' + totalLines + ' lines\n');
+  });
+
 program.parse(process.argv);
