@@ -1,4 +1,4 @@
-# Known Limitations (v0.1-RC1)
+# Known Limitations (v0.2.0)
 
 ## Storage
 

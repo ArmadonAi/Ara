@@ -65,7 +65,7 @@ describe('Ara CLI Gateway - Audit & Verification Suite', () => {
         expect(url.toString()).toContain('/api/status');
         return new Response(JSON.stringify({
           status: 'ok',
-          version: '0.1.0',
+          version: '0.2.0',
           database: 'ok',
           pendingApprovalsCount: 2,
           skillsCount: 4,
@@ -76,7 +76,7 @@ describe('Ara CLI Gateway - Audit & Verification Suite', () => {
 
       const client = new ApiClient();
       const status = await client.getStatus();
-      expect(status.version).toBe('0.1.0');
+      expect(status.version).toBe('0.2.0');
       expect(status.pendingApprovalsCount).toBe(2);
       expect(status.skillsCount).toBe(4);
     });
@@ -257,7 +257,7 @@ describe('Ara CLI Gateway - Audit & Verification Suite', () => {
         expect(url.toString()).toContain('/api/status');
         return new Response(JSON.stringify({
           status: 'ok',
-          version: '0.1.0',
+          version: '0.2.0',
           database: 'ok',
           pendingApprovalsCount: 0,
           skillsCount: 1,

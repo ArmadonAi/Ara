@@ -12,7 +12,7 @@
     },
     "apps/api": {
       "name": "api",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/agent-core": "workspace:*",
         "@ara/checkpoints": "workspace:*",
@@ -29,7 +29,7 @@
     },
     "apps/cli": {
       "name": "@ara/cli",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "ara": "./dist/main.js",
       },
@@ -52,7 +52,7 @@
     },
     "apps/web": {
       "name": "web",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/agent-core": "workspace:*",
         "@ara/memory": "workspace:*",
@@ -81,7 +81,7 @@
     },
     "apps/worker": {
       "name": "@ara/worker",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/agent-core": "workspace:*",
         "@ara/memory": "workspace:*",
@@ -96,7 +96,7 @@
     },
     "packages/agent-core": {
       "name": "@ara/agent-core",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/checkpoints": "workspace:*",
         "@ara/hooks": "workspace:*",
@@ -110,7 +110,7 @@
     },
     "packages/canvas": {
       "name": "@ara/canvas",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
         "zod": "^3.23.0",
@@ -118,7 +118,7 @@
     },
     "packages/checkpoints": {
       "name": "@ara/checkpoints",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/hooks": "workspace:*",
         "@ara/permissions": "workspace:*",
@@ -129,7 +129,7 @@
     },
     "packages/commands": {
       "name": "@ara/commands",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
         "zod": "^3.23.8",
@@ -137,7 +137,7 @@
     },
     "packages/github": {
       "name": "@ara/github",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/checkpoints": "workspace:*",
         "@ara/hooks": "workspace:*",
@@ -148,7 +148,7 @@
     },
     "packages/hooks": {
       "name": "@ara/hooks",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/permissions": "workspace:*",
         "@ara/shared": "workspace:*",
@@ -157,7 +157,7 @@
     },
     "packages/locks": {
       "name": "@ara/locks",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/permissions": "workspace:*",
         "@ara/shared": "workspace:*",
@@ -166,7 +166,7 @@
     },
     "packages/mcp": {
       "name": "@ara/mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/checkpoints": "workspace:*",
         "@ara/hooks": "workspace:*",
@@ -181,21 +181,21 @@
     },
     "packages/memory": {
       "name": "@ara/memory",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
       },
     },
     "packages/model-router": {
       "name": "@ara/model-router",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
       },
     },
     "packages/permissions": {
       "name": "@ara/permissions",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
         "zod": "^3.23.8",
@@ -203,14 +203,14 @@
     },
     "packages/shared": {
       "name": "@ara/shared",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "zod": "^3.23.8",
       },
     },
     "packages/skill-learning": {
       "name": "@ara/skill-learning",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
         "zod": "^3.23.0",
@@ -218,14 +218,14 @@
     },
     "packages/skills": {
       "name": "@ara/skills",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/shared": "workspace:*",
       },
     },
     "packages/subagents": {
       "name": "@ara/subagents",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/hooks": "workspace:*",
         "@ara/model-router": "workspace:*",
@@ -241,10 +241,11 @@
     },
     "packages/tools": {
       "name": "@ara/tools",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@ara/locks": "workspace:*",
         "@ara/shared": "workspace:*",
+        "zod": "^3.23.0",
       },
     },
   },

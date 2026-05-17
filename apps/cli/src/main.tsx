@@ -29,7 +29,7 @@ function askUser(query: string): Promise<string> {
 program
   .name('ara')
   .description('Ara Personal AI Control Plane - CLI/TUI Gateway')
-  .version('0.1.0')
+  .version('0.2.0')
   .action(() => {
     // Standard TUI Mount
     render(<TuiApp />);
@@ -545,15 +545,17 @@ program
 
     console.log('\n\uD83D\uDD0D Ara Diagnostics Report');
     console.log('=============================================================');
-    console.log('  Version:  0.1.0');
+    console.log('  Version:  0.2.0');
     console.log('  Runtime:  Bun ' + process.version);
     console.log('  Platform: ' + process.platform);
     console.log('  CWD:      ' + cwd);
     console.log('-------------------------------------------------------------');
 
-    // API reachable
+    // ── API reachable ──────────────────────────────────────────
+    let apiOnline = false;
     try {
       const stat = await client.getStatus();
+      apiOnline = true;
       ok('API server reachable');
       info('  SQLite: ' + (stat.database || 'unknown'));
       info('  Sandbox: ' + (stat.sandboxMode ? 'ENABLED' : 'DISABLED'));
@@ -561,27 +563,119 @@ program
       err('API server not reachable — start with: bun run dev:api');
     }
 
-    // .ara directories
-    const araDirs = ['.ara', '.ara/sessions', '.ara/checkpoints', '.ara/audit', '.ara/skill-learning', '.ara/canvas/workspaces', '.ara/agents'];
+    // ── .ara directories ───────────────────────────────────────
+    const araDirs = ['.ara', '.ara/sessions', '.ara/checkpoints', '.ara/audit', '.ara/skill-learning', '.ara/canvas/workspaces', '.ara/agents', '.ara/locks'];
     for (const d of araDirs) {
       const full = path.join(cwd, d);
       if (fs.existsSync(full)) ok('.ara/' + d.replace('.ara/', '') + ' exists');
       else info('.ara/' + d.replace('.ara/', '') + ' will be created on first boot');
     }
 
-    // Config examples
+    // ── Config examples ────────────────────────────────────────
     if (fs.existsSync(path.join(cwd, '.ara', 'examples'))) ok('Config examples present');
     else info('Config examples not found (not required)');
 
-    // .env
+    // ── .env ───────────────────────────────────────────────────
     if (fs.existsSync(path.join(cwd, '.env'))) ok('.env file present');
     else info('.env file missing — copy .env.example to .env');
 
-    // Critical project files
+    // ── Critical project files ─────────────────────────────────
     const critical = ['.gitignore', 'bun.lock', 'node_modules', 'package.json', 'tsconfig.json'];
     for (const f of critical) {
       if (fs.existsSync(path.join(cwd, f))) ok(f + ' present');
       else err(f + ' missing');
+    }
+
+    // ── Subsystem checks (via API) ────────────────────────────
+    if (apiOnline) {
+      try {
+        const perms = await fetch(getApiBaseUrl() + '/api/permissions/mode');
+        if (perms.ok) ok('Permissions subsystem available');
+        else info('Permissions endpoint returned status ' + perms.status);
+      } catch {
+        info('Permissions subsystem check skipped (endpoint not reachable)');
+      }
+
+      try {
+        const locks = await client.listLocks();
+        ok('Locks subsystem available' + (Array.isArray(locks) ? ' (' + locks.length + ' locks)' : ''));
+      } catch {
+        info('Locks subsystem check skipped (endpoint not available)');
+      }
+
+      try {
+        const chkpts = await client.listCheckpoints();
+        ok('Checkpoints subsystem available' + (Array.isArray(chkpts) ? ' (' + chkpts.length + ' checkpoints)' : ''));
+      } catch {
+        info('Checkpoints subsystem check skipped (endpoint not available)');
+      }
+    } else {
+      info('Permissions, locks, checkpoints — start API server to verify');
+    }
+
+    // ── MCP config check (filesystem) ──────────────────────────
+    const mcpConfigPath = path.join(cwd, '.ara', 'mcp.json');
+    if (fs.existsSync(mcpConfigPath)) {
+      try {
+        const raw = fs.readFileSync(mcpConfigPath, 'utf-8');
+        JSON.parse(raw);
+        ok('MCP config present and valid');
+      } catch {
+        err('MCP config found but contains invalid JSON — check .ara/mcp.json');
+      }
+    } else {
+      info('MCP config not found — create .ara/mcp.json to use MCP tools');
+    }
+
+    // ── GitHub config check (filesystem) ───────────────────────
+    const githubConfigPath = path.join(cwd, '.ara', 'github.json');
+    if (fs.existsSync(githubConfigPath)) {
+      try {
+        const raw = fs.readFileSync(githubConfigPath, 'utf-8');
+        const cfg = JSON.parse(raw);
+        if (cfg.tokenEnv) ok('GitHub config present (token via env: ' + cfg.tokenEnv + ')');
+        else info('GitHub config present but tokenEnv not set');
+      } catch {
+        err('GitHub config found but contains invalid JSON — check .ara/github.json');
+      }
+    } else {
+      info('GitHub config not found — create .ara/github.json to use GitHub tools');
+    }
+
+    // ── Path leakage check ──────────────────────────────────────
+    try {
+      const srcDir = path.join(cwd, 'apps');
+      if (fs.existsSync(srcDir)) {
+        const { execSync } = require('node:child_process');
+        const result = execSync(
+          'grep -rn "file:///" apps/ packages/ --include="*.ts" --include="*.tsx" 2>/dev/null || true',
+          { cwd, encoding: 'utf-8', maxBuffer: 1024 * 1024 }
+        );
+        if (result.trim()) {
+          const lines = result.trim().split('\n').filter((l: string) => l.length > 0);
+          info('Found ' + lines.length + ' file:/// reference(s) in source (verify intentional):');
+          for (const line of lines.slice(0, 5)) {
+            info('    ' + line.trim());
+          }
+          if (lines.length > 5) info('    ... and ' + (lines.length - 5) + ' more');
+        } else {
+          ok('No local path leakage detected');
+        }
+      } else {
+        info('Path leakage check skipped — no apps/ directory');
+      }
+    } catch {
+      info('Path leakage check skipped (grep not available on this platform)');
+    }
+
+    // ── Backups directory ──────────────────────────────────────
+    const backupsDir = path.join(cwd, '.ara', 'backups');
+    if (fs.existsSync(backupsDir)) {
+      const entries = fs.readdirSync(backupsDir).length;
+      if (entries > 50) info('Backups directory has ' + entries + ' files — consider cleanup');
+      else ok('Backups directory healthy (' + entries + ' files)');
+    } else {
+      info('Backups directory not yet created');
     }
 
     console.log('-------------------------------------------------------------');

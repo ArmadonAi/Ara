@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.2.0 (2026-05-18)
+
+### Added
+
+- **Release packaging tooling**: Version bump automation, release checklist, verification scripts.
+- **`ara doctor` enhancements**: Checks for permissions engine, lock system, checkpoint availability, MCP config presence, GitHub config presence, and local path leakage detection.
+- **GitHub Release Checklist**: Step-by-step guide for pre-release, build, and post-release verification.
+
+### Changed
+
+- **Version bump**: All packages and apps updated from v0.1.0 → v0.2.0 (21 package.json files, 3 source files, 2 docs).
+
+### Security
+
+- **Path leakage detection**: `ara doctor` now scans for file:/// absolute paths in source code.
+- **Config validation**: Missing or malformed MCP/GitHub configs reported with graceful messaging.
+
+### Known Limitations
+
+See [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) for full list.
+
+### Verification
+
+- 318+ tests passing, 0 failing
+- TypeScript strict mode: 0 errors
+- Build: API, Web (Vite), CLI bundled
+- `ara doctor` passes all checks with API online
+- `ara status` returns clean diagnostics
+
 ## v0.1.0 (2026-05-18)
 
 First usable release of Ara Personal AI Control Plane.

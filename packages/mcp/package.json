@@ -1,6 +1,6 @@
 {
   "name": "@ara/mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP / External Tools integration for Ara — safe, auditable, permission-gated access to external tool servers.",
   "type": "module",
   "main": "dist/index.js",
