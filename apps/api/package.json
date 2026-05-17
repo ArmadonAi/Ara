@@ -1,0 +1,20 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "echo 'No build step required for Bun API'"
+  },
+  "dependencies": {
+    "hono": "^4.6.1",
+    "@ara/shared": "workspace:*",
+    "@ara/agent-core": "workspace:*",
+    "@ara/tools": "workspace:*",
+    "@ara/memory": "workspace:*",
+    "@ara/skills": "workspace:*",
+    "@ara/model-router": "workspace:*",
+    "@ara/permissions": "workspace:*",
+    "@ara/hooks": "workspace:*"
+  }
+}

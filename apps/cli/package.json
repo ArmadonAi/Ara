@@ -1,0 +1,31 @@
+{
+  "name": "@ara/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ara": "./dist/main.js"
+  },
+  "scripts": {
+    "dev": "bun run src/main.tsx",
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "start": "bun run dist/main.js"
+  },
+  "dependencies": {
+    "@ara/shared": "workspace:*",
+    "@ara/commands": "workspace:*",
+    "@ara/permissions": "workspace:*",
+    "commander": "^11.1.0",
+    "ink": "^4.4.1",
+    "react": "^18.2.0",
+    "react-devtools-core": "^7.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.79",
+    "bun-types": "^1.3.14",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "ara",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web,worker -c blue,green,yellow \"bun run dev:api\" \"bun run dev:web\" \"bun run dev:worker\"",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:worker": "bun run --cwd apps/worker dev",
+    "dev:cli": "bun run --cwd apps/cli dev",
+    "build": "bun run --cwd apps/api build && bun run --cwd apps/web build && bun run --cwd apps/cli build",
+    "build:cli": "bun run --cwd apps/cli build",
+    "typecheck": "tsc --noEmit",
+    "typecheck:cli": "bun run --cwd apps/cli typecheck",
+    "test": "bun test",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf apps/*/dist packages/*/dist node_modules"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}

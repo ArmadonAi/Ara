@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build and Compilation Outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Local Environment Variables
+.env
+.env.*
+!.env.example
+
+# SQLite Database and Journal Files
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+*.log
+
+# Ara Runtime Session, Memory, and Backup Directories
+.ara/backups/
+.ara/logs/
+.ara/sessions/
+memory/USER.md
+memory/MEMORY.md
+
+# Temporary and Testing Directories
+test-hooks-temp/
+.tempmediaStorage/
+
+# Developer Local Tooling Metadata
+CLAUDE.md

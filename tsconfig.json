@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/web" },
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" },
+    { "path": "./apps/cli" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/agent-core" },
+    { "path": "./packages/tools" },
+    { "path": "./packages/memory" },
+    { "path": "./packages/skills" },
+    { "path": "./packages/model-router" },
+    { "path": "./packages/commands" },
+    { "path": "./tests" }
+  ]
+}

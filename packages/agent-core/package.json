@@ -1,0 +1,16 @@
+{
+  "name": "@ara/agent-core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@ara/shared": "workspace:*",
+    "@ara/tools": "workspace:*",
+    "@ara/memory": "workspace:*",
+    "@ara/skills": "workspace:*",
+    "@ara/model-router": "workspace:*",
+    "@ara/permissions": "workspace:*",
+    "@ara/hooks": "workspace:*"
+  }
+}
