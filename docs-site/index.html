@@ -9,42 +9,41 @@
 <body>
 <nav class="sidebar" id="sidebar"></nav>
 <main class="main">
-  <div class="hero-section">
+  <div class="hero">
     <div class="badge-group">
-      <span class="badge badge-blue">v0.1.0-RC1</span>
-      <span class="badge badge-green">318 Tests</span>
-      <span class="badge badge-purple">TypeScript Strict</span>
-      <span class="badge badge-blue">16 Packages</span>
+      <span class="badge badge-blue">v0.1.0</span>
+      <span class="badge badge-green">318 tests</span>
+      <span class="badge badge-purple">16 packages</span>
     </div>
     <h1>Ara</h1>
-    <p>Local-first, secure personal AI control plane. CLI, TUI, Web Dashboard, MCP, GitHub — all with fine-grained safety controls.</p>
-    <div class="btn-group">
+    <p>Local-first, secure personal AI control plane. CLI, TUI, web dashboard, MCP, GitHub — all with fine-grained safety controls.</p>
+    <div style="margin-top:14px">
       <a href="pages/get-started.html" class="btn btn-primary">Get Started →</a>
-      <a href="pages/cli.html" class="btn btn-secondary">CLI Reference</a>
+      <a href="pages/cli.html" class="btn btn-secondary">CLI</a>
       <a href="pages/architecture.html" class="btn btn-secondary">Architecture</a>
-      <a href="https://github.com/JonusNattapong/Ara" target="_blank" class="btn btn-secondary">GitHub ↗</a>
+      <a href="https://github.com/JonusNattapong/Ara" class="btn btn-secondary">GitHub</a>
     </div>
   </div>
 
-  <div class="stats-row">
-    <div class="stat-box"><div class="stat-value">16</div><div class="stat-label">Packages</div></div>
-    <div class="stat-box"><div class="stat-value">4</div><div class="stat-label">Apps</div></div>
-    <div class="stat-box"><div class="stat-value">318</div><div class="stat-label">Tests</div></div>
-    <div class="stat-box"><div class="stat-value">40+</div><div class="stat-label">Commands</div></div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="num">16</div><div class="label">Packages</div></div>
+    <div class="stat-box"><div class="num">4</div><div class="label">Apps</div></div>
+    <div class="stat-box"><div class="num">318</div><div class="label">Tests</div></div>
+    <div class="stat-box"><div class="num">40+</div><div class="label">Commands</div></div>
   </div>
 
-  <h2>Key Capabilities</h2>
+  <h2>Capabilities</h2>
   <div class="card-grid">
-    <div class="card"><div class="card-icon">💬</div><h3>Chat with AI</h3><p>Terminal or web interface with ReAct agent loop. Stream responses, approve tool calls in real-time.</p></div>
-    <div class="card"><div class="card-icon">🛡️</div><h3>Permission Engine</h3><p>5 security modes, 21 deny rules. Path confinement, symlink protection, credential scanning.</p></div>
-    <div class="card"><div class="card-icon">🔗</div><h3>Lifecycle Hooks</h3><p>22 event types. Run commands or HTTP calls on any lifecycle event.</p></div>
-    <div class="card"><div class="card-icon">🔌</div><h3>MCP / External Tools</h3><p>Connect MCP servers via stdio or HTTP. Full safety pipeline with 10 permission evaluation paths.</p></div>
-    <div class="card"><div class="card-icon">🐙</div><h3>GitHub Integration</h3><p>13 tools for issues, PRs, reviews, checks. Write operations require approval. Token-redacted audit.</p></div>
-    <div class="card"><div class="card-icon">🔒</div><h3>File Locks</h3><p>Read/write locking with deadlock detection. TTL expiry, force-release, persistent JSONL audit.</p></div>
-    <div class="card"><div class="card-icon">🤖</div><h3>Subagents</h3><p>Read-only delegated agents with parallel scheduling. Tool allowlist with namespace wildcards.</p></div>
-    <div class="card"><div class="card-icon">📌</div><h3>Checkpoints</h3><p>Snapshot workspace before mutations. Three restore modes: code, conversation, or both.</p></div>
-    <div class="card"><div class="card-icon">🖼️</div><h3>Canvas Workspace</h3><p>13 node types, 5 edge types. Organize chats, files, tasks as visual nodes. API-first.</p></div>
-    <div class="card"><div class="card-icon">📚</div><h3>Skill Learning</h3><p>Auto-detect repeated workflows, draft reusable skills, approve with versioning.</p></div>
+    <div class="card"><h3>Chat with AI</h3><p>Terminal or web interface with ReAct agent loop. Stream responses, approve tool calls.</p></div>
+    <div class="card"><h3>Permission Engine</h3><p>5 security modes, 21 deny rules. Path safety, symlink protection, credential scanning.</p></div>
+    <div class="card"><h3>MCP / External Tools</h3><p>Connect via stdio or HTTP. Full safety pipeline with 10 permission evaluation paths.</p></div>
+    <div class="card"><h3>GitHub Integration</h3><p>13 tools for issues, PRs, reviews, checks. Write operations require approval. Token-redacted audit.</p></div>
+    <div class="card"><h3>File Locks</h3><p>Read/write locking with deadlock detection. TTL expiry, force-release, persistent audit.</p></div>
+    <div class="card"><h3>Subagents</h3><p>Read-only delegated agents with parallel scheduling. Tool allowlist with wildcards.</p></div>
+    <div class="card"><h3>Checkpoints</h3><p>Snapshot before mutations. Three restore modes: code, conversation, or both.</p></div>
+    <div class="card"><h3>Canvas Workspace</h3><p>13 node types, 5 edge types. Organize chats, files, tasks as visual nodes.</p></div>
+    <div class="card"><h3>Skill Learning</h3><p>Auto-detect repeated workflows, draft reusable skills, approve with versioning.</p></div>
+    <div class="card"><h3>Lifecycle Hooks</h3><p>22 event types. Run commands or HTTP calls on any lifecycle event.</p></div>
   </div>
 
   <h2>Quick Start</h2>
@@ -59,23 +58,15 @@ ara status
 ara chat "Hello"</code></pre></li>
   </ol>
 
-  <div style="text-align:center;margin:32px 0">
-    <a href="pages/get-started.html" class="btn btn-primary">Getting Started Guide →</a>
-    <a href="pages/features.html" class="btn btn-secondary">All Features</a>
+  <div style="text-align:center;margin:28px 0">
+    <a href="pages/get-started.html" class="btn btn-primary">Full Guide →</a>
     <a href="pages/release.html" class="btn btn-secondary">Release Notes</a>
   </div>
 
   <footer class="footer">
-    <p>Ara v0.1.0 — <a href="https://bun.sh">Bun</a> + <a href="https://hono.dev">Hono</a> + <a href="https://react.dev">React</a></p>
-    <p><a href="https://github.com/JonusNattapong/Ara">GitHub</a> · <a href="pages/release.html#changelog">Changelog</a></p>
+    <p><a href="https://github.com/JonusNattapong/Ara">GitHub</a> · <a href="pages/release.html#changelog">Changelog</a> · <a href="pages/release.html#limitations">Limitations</a></p>
   </footer>
 </main>
-<a href="#" class="back-to-top" id="backToTop">↑</a>
 <script src="include.js"></script>
-<script>
-const btt = document.getElementById('backToTop');
-window.addEventListener('scroll', () => btt.classList.toggle('visible', window.scrollY > 300));
-btt.addEventListener('click', e => { e.preventDefault(); window.scrollTo({top:0,behavior:'smooth'}); });
-</script>
 </body>
 </html>
