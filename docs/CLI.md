@@ -289,6 +289,28 @@ Checkpoints capture workspace file states and session transcript snapshots, enab
   ara subagents-parallel cancel <id>
   ```
 
+### 12. Workspace Migration Commands
+
+Easily migrate settings, secrets, memories, and skills if you are moving from another AI assistant (OpenClaw or Hermes).
+
+* **OpenClaw Migration** (`ara openclaw` or `ara claw`):
+
+  ```bash
+  ara openclaw migrate              # Interactive migration (full preset)
+  ara openclaw migrate --dry-run    # Preview what would be migrated
+  ara openclaw migrate --preset user-data   # Migrate settings, memories, skills without secrets
+  ara openclaw migrate --overwrite  # Overwrite existing keys, settings, or files in conflict
+  ```
+
+* **Hermes Migration** (`ara hermes`):
+
+  ```bash
+  ara hermes migrate              # Interactive migration (full preset)
+  ara hermes migrate --dry-run    # Preview what would be migrated
+  ara hermes migrate --preset user-data   # Migrate settings, memories, skills without secrets
+  ara hermes migrate --overwrite  # Overwrite existing keys, settings, or files in conflict
+  ```
+
 ---
 
 ## 🎮 TUI Layout Keyboard Shortcuts

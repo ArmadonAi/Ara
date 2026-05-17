@@ -29,6 +29,7 @@ Ara is a secure, local-first personal AI assistant and autonomous workspace cont
 * **Checkpoint & Rewind**: Automatic file backups to `.ara/backups/` before mutations, with full checkpoint/restore workflow.
 * **Slash Commands**: In-chat commands for model switching, context management, permissions, hooks, checkpoints, MCP, and GitHub.
 * **Local Memory & Skills**: Progressive markdown loaders that parse USER.md, MEMORY.md, and SKILL.md files with YAML frontmatter.
+* **OpenClaw & Hermes Migration**: Automatic detectors and interactive/scripted migration wizards to seamlessly import settings, API keys/secrets, memory facts, and skill procedures from existing OpenClaw (`~/.openclaw`) or Hermes (`~/.hermes`) installations.
 
 ---
 
@@ -164,6 +165,8 @@ ara github status                # GitHub integration status
 ara github issues [o/r]         # List GitHub issues
 ara github prs [o/r]            # List GitHub PRs
 ara github issue-create --title "..."  # Create issue (requires approval)
+ara openclaw migrate             # Interactive OpenClaw setup migration
+ara hermes migrate              # Interactive Hermes setup migration
 ```
 
 Full documentation: [docs/CLI.md](docs/CLI.md)
