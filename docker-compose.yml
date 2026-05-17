@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  ara:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ara-control-plane
+    restart: unless-stopped
+    ports:
+      - "3001:3001" # Hono Backend API & Webhooks
+      - "5173:5173" # React Web Dashboard
+    volumes:
+      # Persist session configs, backups, and logs
+      - ara-data:/usr/src/app/.ara
+      # Mount SQLite database file for persistent host access
+      - ./ara.sqlite:/usr/src/app/ara.sqlite
+      # Mount memory folder for editing markdown notes
+      - ./memory:/usr/src/app/memory
+      # Mount skills folder to add custom procedural skills
+      - ./skills:/usr/src/app/skills
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN:-}
+      - USE_DOCKER_SANDBOX=false
+      - NODE_ENV=production
+      - API_PORT=3001
+
+volumes:
+  ara-data:

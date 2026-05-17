@@ -325,6 +325,11 @@ body {
   transform: scale(1.05);
 }
 
+.btn-upload { background: transparent; border: 1px dashed rgba(255,255,255,0.2); color: #94a3b8; width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; margin-left: 4px; }
+.btn-upload:hover { border-color: var(--color-cyan); color: var(--color-cyan); }
+.file-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0 0 0; }
+.file-chip { background: rgba(0,242,254,0.08); border: 1px solid rgba(0,242,254,0.15); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #94a3b8; }
+.chip-remove { background: none; border: none; color: #ff007f; cursor: pointer; font-size: 12px; padding: 0 2px; }
 /* Sessions items */
 .session-item {
   display: flex;

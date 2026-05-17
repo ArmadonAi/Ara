@@ -1047,6 +1047,265 @@ app.post('/api/approvals/:id/resolve', async (c) => {
   return c.text('Invalid action', 400);
 });
 
+// ── Media download helpers ──────────────────────────────────────
+const UPLOADS_DIR = path.join(process.cwd(), '.ara', 'uploads');
+
+function ensureUploadsDir() {
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+async function downloadTelegramFile(token: string, fileId: string): Promise<string | null> {
+  try {
+    ensureUploadsDir();
+    const res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+    const data = await res.json() as any;
+    if (!data.ok || !data.result?.file_path) return null;
+    const filePath = data.result.file_path as string;
+    const dl = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+    if (!dl.ok) return null;
+    const buf = await dl.arrayBuffer();
+    const localName = `tg_${Date.now()}_${path.basename(filePath)}`;
+    const localPath = path.join(UPLOADS_DIR, localName);
+    fs.writeFileSync(localPath, Buffer.from(buf));
+    return localPath;
+  } catch { return null; }
+}
+
+async function downloadLineFile(token: string, messageId: string, ext: string): Promise<string | null> {
+  try {
+    ensureUploadsDir();
+    const dl = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!dl.ok) return null;
+    const buf = await dl.arrayBuffer();
+    const localName = `line_${Date.now()}.${ext}`;
+    const localPath = path.join(UPLOADS_DIR, localName);
+    fs.writeFileSync(localPath, Buffer.from(buf));
+    return localPath;
+  } catch { return null; }
+}
+
+// -------------------------------------------------------------
+// Telegram & LINE Chatbot Webhooks
+// -------------------------------------------------------------
+
+// POST /api/webhooks/telegram: Telegram Chatbot Integration Gateway
+app.post('/api/webhooks/telegram', async (c) => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    return c.json({ error: 'TELEGRAM_BOT_TOKEN is not configured.' }, 400);
+  }
+
+  try {
+    const body = await c.req.json();
+    if (!body || !body.message || !body.message.chat) {
+      return c.json({ ok: true, note: 'Ignored empty update.' });
+    }
+
+    const chatId = body.message.chat.id.toString();
+    const sessionId = `tg-${chatId}`;
+    let text = body.message.text?.trim() || '';
+
+    // Handle media messages
+    const mediaInfo: string[] = [];
+    if (body.message.photo) {
+      const photos = body.message.photo as { file_id: string }[];
+      const largest = photos[photos.length - 1];
+      if (largest?.file_id) {
+        const p = await downloadTelegramFile(token, largest.file_id);
+        mediaInfo.push(p ? `[Image: ${path.basename(p)}]` : '[Image: dl failed]');
+      }
+    }
+    if (body.message.document) {
+      const doc = body.message.document as { file_id: string; file_name?: string };
+      const p = await downloadTelegramFile(token, doc.file_id);
+      mediaInfo.push(p ? `[File: ${doc.file_name || path.basename(p)}]` : `[File: ${doc.file_name || '?'} dl failed]`);
+    }
+    if (body.message.voice) {
+      const voice = body.message.voice as { file_id: string };
+      const p = await downloadTelegramFile(token, voice.file_id);
+      mediaInfo.push(p ? `[Voice: ${path.basename(p)}]` : '[Voice: dl failed]');
+    }
+    if (!text && mediaInfo.length === 0) {
+      return c.json({ ok: true, note: 'Ignored non-text, non-media update.' });
+    }
+    const fullUserContent = mediaInfo.length > 0
+      ? [...mediaInfo, text].filter(Boolean).join('\n')
+      : text;
+
+    // Get or create session
+    let session = getSession(sessionId);
+    if (!session) {
+      db.run(
+        'INSERT INTO sessions (id, title, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        [sessionId, `Telegram Chat (${chatId})`, 'Gemini', new Date().toISOString(), new Date().toISOString()]
+      );
+      session = getSession(sessionId)!;
+    }
+
+    // Save user message
+    const userMsg: Message = {
+      id: Math.random().toString(36).substring(7),
+      role: 'user',
+      content: text,
+      createdAt: new Date()
+    };
+    saveMessage(sessionId, userMsg);
+    session.messages.push(userMsg);
+
+    // Send typing action to Telegram
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, action: 'typing' })
+      });
+    } catch (e) {}
+
+    // Execute ReAct agent loop
+    let fullContent = '';
+    for await (const chunk of runtime.streamAgentLoop(session, fullUserContent, {
+      onAuditLog: (log) => {
+        const auditId = Math.random().toString(36).substring(7);
+        db.run(
+          'INSERT INTO audit_logs (id, session_id, tool_name, input, output, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [auditId, sessionId, log.toolName, JSON.stringify(log.input), log.outputSummary, log.status, new Date().toISOString()]
+        );
+      }
+    })) {
+      if (chunk.text) {
+        fullContent += chunk.text;
+      }
+    }
+
+    // Save finalized assistant message
+    const assistantMsg: Message = {
+      id: Math.random().toString(36).substring(7),
+      role: 'assistant',
+      content: fullContent,
+      createdAt: new Date()
+    };
+    saveMessage(sessionId, assistantMsg);
+
+    // Send message to Telegram
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: fullContent || "Sorry, Ara couldn't compute a reply."
+      })
+    });
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    console.error('Telegram Webhook error:', err.message);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// POST /api/webhooks/line: LINE Chatbot Integration Gateway
+app.post('/api/webhooks/line', async (c) => {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) {
+    return c.json({ error: 'LINE_CHANNEL_ACCESS_TOKEN is not configured.' }, 400);
+  }
+
+  try {
+    const body = await c.req.json();
+    if (!body || !Array.isArray(body.events)) {
+      return c.json({ ok: true, note: 'Ignored empty or invalid events payload.' });
+    }
+
+    for (const event of body.events) {
+      if (event.type !== 'message' || !event.message || !event.source?.userId) continue;
+      const replyToken = event.replyToken;
+      const userId = event.source.userId;
+      const sanitizedId = userId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30);
+      const sessionId = `line-${sanitizedId}`;
+      let userContent = '';
+      if (event.message.type === 'text') {
+        userContent = (event.message.text || '').trim();
+      }
+      if (event.message.type === 'image') {
+        const p = await downloadLineFile(token, event.message.id as string, 'jpg');
+        userContent = p ? `[Image: ${path.basename(p)}]` : '[Image: dl failed]';
+      }
+      if (!userContent) continue;
+
+      // Get or create session
+
+        // Get or create session
+        let session = getSession(sessionId);
+        if (!session) {
+          db.run(
+            'INSERT INTO sessions (id, title, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+            [sessionId, `LINE Chat (${sanitizedId.slice(0, 6)})`, 'Gemini', new Date().toISOString(), new Date().toISOString()]
+          );
+          session = getSession(sessionId)!;
+        }
+
+        // Save user message
+        const userMsg: Message = {
+          id: Math.random().toString(36).substring(7),
+          role: 'user',
+          content: userContent,
+          createdAt: new Date()
+        };
+        saveMessage(sessionId, userMsg);
+        session.messages.push(userMsg);
+
+        // Execute ReAct agent loop to completion (non-streaming for webhook reply)
+        let fullContent = '';
+        for await (const chunk of runtime.streamAgentLoop(session, userContent, {
+          onAuditLog: (log) => {
+            const auditId = Math.random().toString(36).substring(7);
+            db.run(
+              'INSERT INTO audit_logs (id, session_id, tool_name, input, output, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [auditId, sessionId, log.toolName, JSON.stringify(log.input), log.outputSummary, log.status, new Date().toISOString()]
+            );
+          }
+        })) {
+          if (chunk.text) {
+            fullContent += chunk.text;
+          }
+        }
+
+        // Save finalized assistant message
+        const assistantMsg: Message = {
+          id: Math.random().toString(36).substring(7),
+          role: 'assistant',
+          content: fullContent,
+          createdAt: new Date()
+        };
+        saveMessage(sessionId, assistantMsg);
+
+        // Send message to LINE using reply token
+        await fetch('https://api.line.me/v2/bot/message/reply', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            replyToken: replyToken,
+            messages: [{
+              type: 'text',
+              text: fullContent || "Sorry, Ara couldn't compute a reply."
+            }]
+          })
+        });
+      }
+    }
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    console.error('LINE Webhook error:', err.message);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 // POST /api/sessions/:id/messages: Send message and stream SSE reply
 app.post('/api/sessions/:id/messages', async (c) => {
   const id = c.req.param('id');

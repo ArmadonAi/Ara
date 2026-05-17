@@ -314,7 +314,7 @@ export function TuiApp() {
           setRestoreStatus('Restoring...');
           try {
             await client.restoreCheckpoint(selectedCheckpointId, restoreMode);
-            setRestoreStatus('✅ Success!');
+            setRestoreStatus('[OK]');
             setTimeout(async () => {
               setShowRestoreModal(false);
               setRestoreStatus('');
@@ -324,7 +324,7 @@ export function TuiApp() {
               } catch (e) {}
             }, 2000);
           } catch (err: any) {
-            setRestoreStatus(`❌ Failed: ${err.message}`);
+            setRestoreStatus(`Failed: ${err.message}`);
           }
         }
         return;
@@ -553,7 +553,7 @@ export function TuiApp() {
   // Warning layout if terminal is too compressed
   if (terminalWidth < 60 || terminalHeight < 15) {
     return (
-      <Box flexDirection="column" padding={2} borderStyle="round" borderColor="red">
+      <Box flexDirection="column" padding={2}>
         <Text color="red" bold>Terminal too small ({terminalWidth}x{terminalHeight}). Resize to 80x20+.</Text>
       </Box>
     );
@@ -562,7 +562,7 @@ export function TuiApp() {
   // Dashboard Offline Banner
   if (!apiReachable) {
     return (
-      <Box flexDirection="column" padding={2} borderStyle="round" borderColor="red" width={terminalWidth - 4}>
+      <Box flexDirection="column" padding={2} width={terminalWidth - 4}>
         <Text color="red" bold>API server unreachable at {getApiBaseUrl()}</Text>
         <Text color="yellow">Start with: bun run dev:api</Text>
         <Text color="gray">Press Ctrl+C to exit.</Text>
@@ -571,166 +571,139 @@ export function TuiApp() {
   }
 
   return (
-    <Box flexDirection="column" width={terminalWidth} height={terminalHeight} borderStyle="single" borderColor="blue">
-      {/* 1. Header Navigation Tabs Bar */}
-      <Box borderStyle="classic" borderColor="cyan" paddingX={1} justifyContent="space-between">
-        <Box>
-          <Text bold color="cyan">Ara TUI </Text>
-          <Text color="gray">v{version}</Text>
-        </Box>
-        <Box>
-          {primaryTabs.map(tab => (
-            <Box key={tab} marginX={1}>
-              <Text bold={activeTab === tab} color={activeTab === tab ? 'green' : 'white'} inverse={activeTab === tab}>
-                [{tab}]
-              </Text>
-            </Box>
-          ))}
-          <Text color="gray">|</Text>
-          {secondaryTabs.map(tab => (
-            <Box key={tab} marginX={1}>
-              <Text color={activeTab === tab ? 'green' : 'gray'}>
-                {tab}
-              </Text>
-            </Box>
-          ))}
-        </Box>
+    <Box flexDirection="column" width={terminalWidth} height={terminalHeight}>
+      {/* 1. ASCII Header */}
+      <Box flexDirection="column">
+        <Text color="cyan">
+          {'  ___ _  ___    ___ _   _ ___ '.padEnd(terminalWidth - 1, ' ')}
+        </Text>
+        <Text color="cyan">
+          {' / _ \\ |/ _ \\  / __| | | / __|'.padEnd(terminalWidth - 1, ' ')}
+        </Text>
+        <Text color="cyan">
+          {'| (_)   | (_) | (__| |_| \\__ \\'.padEnd(terminalWidth - 1, ' ')}
+        </Text>
+        <Text color="cyan">
+          {' \\___/_|\\___/  \\___|\\__,_|___/'.padEnd(terminalWidth - 1, ' ')}
+        </Text>
+        <Text color="gray">{''.padEnd(terminalWidth - 1, '─')}</Text>
       </Box>
+      {/* Tab bar */}
+      <Box flexDirection="row" paddingX={1}>
+        {primaryTabs.map(tab => (
+          <Box key={tab} marginRight={2}>
+            <Text bold={activeTab === tab} color={activeTab === tab ? 'green' : 'white'} inverse={activeTab === tab}>
+              {activeTab === tab ? `[${tab}]` : ` ${tab} `}
+            </Text>
+          </Box>
+        ))}
+        <Text color="gray">│</Text>
+        {secondaryTabs.map(tab => (
+          <Box key={tab} marginLeft={1}>
+            <Text color={activeTab === tab ? 'green' : 'gray'}>
+              {tab}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+      <Text color="gray">{''.padEnd(terminalWidth - 1, '─')}</Text>
 
       {/* 2. Main Content layout (Split sidebar and panel) */}
       <Box flexGrow={1} flexDirection="row">
-        {/* Sidebar panels */}
-        <Box width={30} borderStyle="single" borderColor="gray" flexDirection="column" justifyContent="space-between">
-          <Box flexDirection="column">
+        {/* Sidebar */}
+        <Box width={28} flexDirection="column" justifyContent="space-between">
+          <Box flexDirection="column" paddingX={1}>
             {activeTab === 'Checkpoints' ? (
               <>
-                <Box borderStyle="classic" borderColor="gray">
-                  <Text bold color="yellow">Checkpoints</Text>
-                </Box>
+                <Text bold color="yellow">Checkpoints</Text>
+                <Text color="gray">{''.padEnd(26, '─')}</Text>
                 {checkpoints.length === 0 ? (
-                  <Text color="gray"> No checkpoints.</Text>
+                  <Text color="gray"> (empty)</Text>
                 ) : (
                   checkpoints.slice(0, 12).map((c) => (
-                    <Box key={c.id} paddingX={1}>
-                      <Text color={selectedCheckpointId === c.id ? 'green' : 'white'} bold={selectedCheckpointId === c.id}>
-                        {selectedCheckpointId === c.id ? '👉 ' : '  '}
-                        {c.id.slice(0, 8)}... ({c.createdBy.slice(0, 10)})
-                      </Text>
-                    </Box>
+                    <Text key={c.id} color={selectedCheckpointId === c.id ? 'green' : 'white'} bold={selectedCheckpointId === c.id}>
+                      {'> '}{c.id.slice(0, 8)}
+                    </Text>
                   ))
                 )}
               </>
             ) : activeTab === 'MCP' ? (
               <>
-                <Box borderStyle="classic" borderColor="gray">
-                  <Text bold color="yellow">MCP Servers</Text>
-                </Box>
+                <Text bold color="yellow">MCP Servers</Text>
+                <Text color="gray">{''.padEnd(26, '─')}</Text>
                 {mcpServers.length === 0 ? (
-                  <Text color="gray"> None configured.</Text>
+                  <Text color="gray"> (empty)</Text>
                 ) : (
                   mcpServers.slice(0, 12).map((s) => (
-                    <Box key={s.id} paddingX={1}>
-                      <Text color={selectedMcpServerId === s.id ? 'green' : 'white'} bold={selectedMcpServerId === s.id}>
-                        {selectedMcpServerId === s.id ? '👉 ' : '  '}
-                        {s.id.slice(0, 14).padEnd(14)} {s.enabled ? 'ON' : 'OFF'}
-                      </Text>
-                    </Box>
+                    <Text key={s.id} color={selectedMcpServerId === s.id ? 'green' : 'white'}>
+                      {'> '}{s.id.slice(0, 16)}
+                    </Text>
                   ))
                 )}
               </>
             ) : activeTab === 'GitHub' ? (
               <>
-                <Box borderStyle="classic" borderColor="gray">
-                  <Text bold color="yellow">GitHub</Text>
-                </Box>
-                <Box paddingX={1} flexDirection="column">
-                  <Text color="gray">Status: {ghStatus?.tokenPresent ? 'Connected' : 'No Token'}</Text>
-                  <Text color="gray">Repo: {ghStatus?.defaultOwner || '?'}/{ghStatus?.defaultRepo || '?'}</Text>
-                  <Text color="gray">ReadOnly: {ghStatus?.readOnly ? 'Yes' : 'No'}</Text>
-                  <Text color="gray">Repos: {(ghStatus?.allowedRepos || []).length > 0 ? ghStatus.allowedRepos.join(', ') : 'all'}</Text>
-                </Box>
+                <Text bold color="yellow">GitHub</Text>
+                <Text color="gray">{''.padEnd(26, '─')}</Text>
+                <Text color="gray">Token: {ghStatus?.tokenPresent ? 'yes' : 'no'}</Text>
+                <Text color="gray">Repo: {ghStatus?.defaultOwner || '?'}/{ghStatus?.defaultRepo || '?'}</Text>
               </>
             ) : activeTab === 'Locks' ? (
               <>
-                <Box borderStyle="classic" borderColor="gray">
-                  <Text bold color="yellow">Active Locks</Text>
-                </Box>
+                <Text bold color="yellow">Locks</Text>
+                <Text color="gray">{''.padEnd(26, '─')}</Text>
                 {lockList.length === 0 ? (
-                  <Text color="gray"> No active locks.</Text>
+                  <Text color="gray"> (empty)</Text>
                 ) : (
-                  lockList.slice(0, 10).map((l: any) => (
-                    <Box key={l.id} paddingX={1}>
-                      <Text color="white">{l.mode === 'write' ? 'W' : 'R'} {l.path?.slice(-20).padStart(20)}</Text>
-                    </Box>
+                  lockList.slice(0, 8).map((l: any) => (
+                    <Text key={l.id}>{l.mode === 'write' ? 'W' : 'R'} {l.path?.slice(-18)}</Text>
                   ))
                 )}
-                <Box borderStyle="classic" borderColor="gray" marginTop={1}>
-                  <Text bold color="yellow">Parallel Runs</Text>
-                </Box>
-                {parallelRuns.slice(0, 5).map((r: any) => (
-                  <Box key={r.id} paddingX={1}>
-                    <Text color="white">{r.status?.slice(0, 8).padEnd(8)} {(r.profiles || []).length} agents</Text>
-                  </Box>
+                <Text bold color="yellow">Parallel Runs</Text>
+                {parallelRuns.slice(0, 3).map((r: any) => (
+                  <Text key={r.id}>{r.status?.slice(0, 6)} {(r.profiles || []).length}a</Text>
                 ))}
               </>
             ) : activeTab === 'Canvas' ? (
               <>
-                <Box borderStyle="classic" borderColor="gray">
-                  <Text bold color="yellow">Canvas</Text>
-                </Box>
+                <Text bold color="yellow">Canvas</Text>
+                <Text color="gray">{''.padEnd(26, '─')}</Text>
                 {canvasWorkspaces.length === 0 ? (
-                  <Text color="gray"> No workspaces.</Text>
+                  <Text color="gray"> (empty)</Text>
                 ) : (
                   canvasWorkspaces.slice(0, 10).map((ws: any) => (
-                    <Box key={ws.id} paddingX={1}>
-                      <Text color="white">{(ws.name || '').slice(0, 16).padEnd(16)}</Text>
-                    </Box>
+                    <Text key={ws.id}>{(ws.name || '').slice(0, 20)}</Text>
                   ))
                 )}
               </>
             ) : (
               <>
-                <Box borderStyle="classic" borderColor="gray">
-                  <Text bold color="yellow">Sessions</Text>
-                </Box>
+                <Text bold color="yellow">Sessions</Text>
+                <Text color="gray">{''.padEnd(26, '─')}</Text>
                 {sessions.length === 0 ? (
-                  <Text color="gray"> None.</Text>
+                  <Text color="gray"> (empty)</Text>
                 ) : (
                   sessions.slice(0, 12).map((s) => (
-                    <Box key={s.id} paddingX={1}>
-                      <Text color={selectedSessionId === s.id ? 'green' : 'white'} bold={selectedSessionId === s.id}>
-                        {selectedSessionId === s.id ? '👉 ' : '  '}
-                        {s.title.slice(0, 20)} ({s.messageCount})
-                      </Text>
-                    </Box>
+                    <Text key={s.id} color={selectedSessionId === s.id ? 'green' : 'white'} bold={selectedSessionId === s.id}>
+                      {'> '}{s.title.slice(0, 20)} ({s.messageCount})
+                    </Text>
                   ))
                 )}
               </>
             )}
           </Box>
-          <Box padding={1} borderStyle="classic" borderColor="gray">
-            {activeTab === 'Checkpoints' ? (
-              <Box flexDirection="column">
-                <Text color="gray">C: code | V: msg | B: both</Text>
-                <Text color="gray">R: restore | arrow: select</Text>
-              </Box>
-            ) : (
-              <Box flexDirection="column">
-                <Text color="gray">Tab: switch tab</Text>
-                <Text color="gray">Ctrl+N: new session</Text>
-              </Box>
-            )}
+          <Box paddingX={1}>
+            <Text color="gray">v{version} [{permissionMode.toUpperCase()}]</Text>
           </Box>
         </Box>
 
-        {/* Main Panel Panels based on Active Tab */}
-        <Box flexGrow={1} borderStyle="single" borderColor="gray" padding={1} flexDirection="column">
+        {/* Separator */}
+        <Box width={1}><Text color="gray">│</Text></Box>
+        {/* Main Panel */}
+        <Box flexGrow={1} paddingX={1} flexDirection="column">
           {activeTab === 'Chat' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="yellow">
-                <Text bold color="yellow">Messages</Text>
-              </Box>
-              <Box flexDirection="column" flexGrow={1} marginY={1}>
+              <Box flexDirection="column" flexGrow={1}>
                 {messages.length === 0 ? (
                   <Text color="gray">Type a message and press Enter.</Text>
                 ) : (
@@ -752,9 +725,8 @@ export function TuiApp() {
 
           {activeTab === 'Subagents' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="green">
-                <Text bold color="green">Subagent Profiles</Text>
-              </Box>
+              <Text bold color="green">Subagent Profiles</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box flexDirection="row" flexGrow={1} marginTop={1}>
                 {/* Left panel: Profiles list */}
                 <Box width={35} flexDirection="column" marginRight={2}>
@@ -779,10 +751,10 @@ export function TuiApp() {
                     subagentRuns.slice(0, 4).map(r => {
                       const statusIcon = r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'FAIL' : r.status === 'cancelled' ? 'CANCEL' : '...';
                       return (
-                        <Box key={r.id} borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} flexDirection="column">
+                        <Box key={r.id} flexDirection="column" paddingX={1} marginY={1}>
                           <Text bold color="cyan">[{statusIcon}] {r.profileName}</Text>
-                          <Text color="white">Task: {r.task.slice(0, 40)}...</Text>
-                          <Text color="gray">Status: {r.status}</Text>
+                          <Text color="white">  Task: {r.task.slice(0, 40)}</Text>
+                          <Text color="gray">  Status: {r.status}</Text>
                         </Box>
                       );
                     })
@@ -794,22 +766,21 @@ export function TuiApp() {
 
           {activeTab === 'Approvals' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="red">
-                <Text bold color="red">Pending Approvals</Text>
-              </Box>
+              <Text bold color="red">Pending Approvals</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               {approvals.length === 0 ? (
                 <Box marginTop={2}>
                   <Text color="gray">None pending.</Text>
                 </Box>
               ) : (
                 approvals.slice(0, 4).map(app => (
-                  <Box key={app.id} borderStyle="round" borderColor="yellow" padding={1} flexDirection="column" marginBottom={1}>
-                    <Text bold color="yellow">ID: {app.id} | Tool: {app.toolName}</Text>
-                    <Text>Reason: {app.reason}</Text>
-                    <Text>Args: {app.input.slice(0, 100)}</Text>
-                    <Box flexDirection="row" marginTop={1}>
-                      <Text color="green" bold>[Press A] Approve  </Text>
-                      <Text color="red" bold>[Press R] Reject</Text>
+                  <Box key={app.id} flexDirection="column" paddingX={1} marginBottom={1}>
+                    <Text bold color="yellow">Tool: {app.toolName}</Text>
+                    <Text>  Reason: {app.reason}</Text>
+                    <Text>  Args: {app.input.slice(0, 80)}</Text>
+                    <Box flexDirection="row">
+                      <Text color="green" bold>  [A] Approve  </Text>
+                      <Text color="red" bold>[R] Reject</Text>
                     </Box>
                   </Box>
                 ))
@@ -819,13 +790,12 @@ export function TuiApp() {
 
           {activeTab === 'Checkpoints' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="green">
-                <Text bold color="green">Checkpoints</Text>
-              </Box>
+              <Text bold color="green">Checkpoints</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               
               {showRestoreModal ? (
-                <Box borderStyle="double" borderColor="red" padding={1} marginY={1} flexDirection="column" alignItems="center">
-                  <Text color="red" bold>Restore checkpoint: {selectedCheckpointId}</Text>
+                <Box flexDirection="column" padding={1} marginY={1}>
+                  <Text color="red" bold>Restore: {selectedCheckpointId}</Text>
                   <Text color="yellow">Mode: {restoreMode.toUpperCase()}</Text>
                   {restoreStatus ? (
                     <Text color="yellow" bold>{restoreStatus}</Text>
@@ -885,7 +855,7 @@ export function TuiApp() {
                     {checkpointDiff ? (
                       <Box flexDirection="column" marginY={1}>
                         {checkpointDiff.modified?.length === 0 && checkpointDiff.created?.length === 0 && checkpointDiff.deleted?.length === 0 ? (
-                          <Text color="green">✨ Workspace is fully identical to checkpoint!</Text>
+                          <Text color="green">Workspace is identical to checkpoint.</Text>
                         ) : (
                           <>
                             {checkpointDiff.created?.map((f: string) => (
@@ -918,9 +888,8 @@ export function TuiApp() {
 
           {activeTab === 'MCP' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="green">
-                <Text bold color="green">MCP External Tools</Text>
-              </Box>
+              <Text bold color="green">MCP External Tools</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               {mcpServers.length === 0 ? (
                 <Text color="gray"> None configured. Edit .ara/mcp.json</Text>
               ) : (
@@ -932,11 +901,9 @@ export function TuiApp() {
                       const health = mcpHealth.find(h => h.serverId === s.id);
                       const st = health?.state || s.state || 'unknown';
                       return (
-                        <Box key={s.id} flexDirection="column" marginY={1} paddingX={1}
-                          borderStyle={sel ? 'round' : undefined} borderColor={sel ? 'green' : undefined}>
-                          <Text bold color="cyan">- {s.id} {s.enabled ? '(enabled)' : '(disabled)'}</Text>
-                          <Text color="white">Type: {s.type}  Trusted: {s.trusted ? 'yes' : 'no'}</Text>
-                          <Text color="gray">Mode: {s.permissionMode || 'default'}  State: {st}</Text>
+                        <Box key={s.id} flexDirection="column" marginY={1} paddingX={1}>
+                          <Text bold color={sel ? 'green' : 'cyan'}>{sel ? '> ' : '  '}{s.id} {s.enabled ? '' : '(off)'}</Text>
+                          <Text color="white">  Type: {s.type} | Mode: {s.permissionMode || 'default'} | State: {st}</Text>
                         </Box>
                       );
                     })}
@@ -977,9 +944,8 @@ export function TuiApp() {
 
           {activeTab === 'GitHub' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="green">
-                <Text bold color="green">GitHub Integration</Text>
-              </Box>
+              <Text bold color="green">GitHub Integration</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               {!ghStatus?.configured ? (
                 <Text color="gray"> GitHub not configured. See docs/GITHUB.md</Text>
               ) : (
@@ -1022,26 +988,25 @@ export function TuiApp() {
 
           {activeTab === 'Locks' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="yellow">
-                <Text bold color="yellow">File Locks & Parallel Runs</Text>
-              </Box>
+              <Text bold color="yellow">File Locks & Parallel Runs</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box flexDirection="row" flexGrow={1} marginTop={1}>
                 <Box width={45} flexDirection="column" marginRight={1}>
                   <Text bold color="yellow">Active Locks ({lockList.length})</Text>
                   {lockList.length === 0 ? <Text color="gray"> No active locks.</Text> : (
                     lockList.slice(0, 8).map((l: any) => (
-                      <Box key={l.id} paddingX={1} marginY={1} borderStyle="round" borderColor="gray">
+                      <Box key={l.id} paddingX={1} marginY={1}>
                         <Text>{l.mode === 'write' ? 'Write' : 'Read'} on {l.path?.slice(-30)}</Text>
-                        <Text color="gray">Owner: {l.agentName || l.sessionId}  Expires: {(l.expiresAt || '').slice(11, 19)}</Text>
+                        <Text color="gray">  Owner: {l.agentName || l.sessionId}  Expires: {(l.expiresAt || '').slice(11, 19)}</Text>
                       </Box>
                     ))
                   )}
                   <Text bold color="yellow" marginTop={1}>Parallel Runs ({parallelRuns.length})</Text>
                   {parallelRuns.length === 0 ? <Text color="gray"> No parallel runs.</Text> : (
                     parallelRuns.slice(0, 4).map((r: any) => (
-                      <Box key={r.id} paddingX={1} marginY={1} borderStyle="round" borderColor="gray">
+                      <Box key={r.id} paddingX={1} marginY={1}>
                         <Text>Status: {r.status}  Agents: {(r.profiles || []).length}  Results: {(r.results || []).length}</Text>
-                        <Text color="gray">ID: {r.id?.slice(0, 20)}</Text>
+                        <Text color="gray">  ID: {r.id?.slice(0, 20)}</Text>
                       </Box>
                     ))
                   )}
@@ -1062,9 +1027,8 @@ export function TuiApp() {
 
           {activeTab === 'Canvas' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="cyan">
-                <Text bold color="cyan">Canvas Workspaces</Text>
-              </Box>
+              <Text bold color="cyan">Canvas Workspaces</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               {!apiReachable ? (
                 <Text color="red">API offline.</Text>
               ) : canvasWorkspaces.length === 0 ? (
@@ -1074,10 +1038,10 @@ export function TuiApp() {
                   <Box width={40} flexDirection="column" marginRight={1}>
                     <Text bold color="yellow">Workspaces ({canvasWorkspaces.length})</Text>
                     {canvasWorkspaces.slice(0, 8).map((ws: any) => (
-                      <Box key={ws.id} paddingX={1} marginY={1} borderStyle="round" borderColor="gray">
+                      <Box key={ws.id} paddingX={1} marginY={1}>
                         <Text bold color="cyan">{(ws.name || '').slice(0, 24)}</Text>
-                        <Text color="gray">ID: {(ws.id || '').slice(0, 12)}</Text>
-                        <Text color="gray">Created: {(ws.createdAt || '').slice(0, 10)}</Text>
+                        <Text color="gray">  ID: {(ws.id || '').slice(0, 12)}</Text>
+                        <Text color="gray">  Created: {(ws.createdAt || '').slice(0, 10)}</Text>
                       </Box>
                     ))}
                   </Box>
@@ -1098,9 +1062,8 @@ export function TuiApp() {
 
           {activeTab === 'Tools' && (
             <Box flexDirection="column">
-              <Box borderStyle="classic" borderColor="cyan">
-                <Text bold color="cyan">Registered Tools</Text>
-              </Box>
+              <Text bold color="cyan">Registered Tools</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box marginTop={1} flexDirection="column">
                 <Text>1. list_files: Read directories paths</Text>
                 <Text>2. read_file: View target workspace content</Text>
@@ -1114,9 +1077,8 @@ export function TuiApp() {
 
           {activeTab === 'Memory' && (
             <Box flexDirection="column">
-              <Box borderStyle="classic" borderColor="magenta">
-                <Text bold color="magenta">Memories</Text>
-              </Box>
+              <Text bold color="magenta">Memories</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box flexDirection="column" marginTop={1}>
                 {memories.slice(0, 10).map(m => (
                   <Box key={m.id} marginBottom={1}>
@@ -1129,9 +1091,8 @@ export function TuiApp() {
 
           {activeTab === 'Skills' && (
             <Box flexDirection="column">
-              <Box borderStyle="classic" borderColor="green">
-                <Text bold color="green">Skills</Text>
-              </Box>
+              <Text bold color="green">Skills</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box flexDirection="column" marginTop={1}>
                 {skills.map(s => (
                   <Box key={s.name} flexDirection="column" marginBottom={1}>
@@ -1145,9 +1106,8 @@ export function TuiApp() {
 
           {activeTab === 'Learning' && (
             <Box flexDirection="column" flexGrow={1}>
-              <Box borderStyle="classic" borderColor="green">
-                <Text bold color="green">Skill Learning</Text>
-              </Box>
+              <Text bold color="green">Skill Learning</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               {!apiReachable ? (
                 <Text color="red">API offline.</Text>
               ) : (
@@ -1187,9 +1147,8 @@ export function TuiApp() {
 
           {activeTab === 'Audit' && (
             <Box flexDirection="column">
-              <Box borderStyle="classic" borderColor="yellow">
-                <Text bold color="yellow">Audit Logs</Text>
-              </Box>
+              <Text bold color="yellow">Audit Logs</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box flexDirection="column" marginTop={1}>
                 {auditLogs.slice(0, 6).map(log => (
                   <Box key={log.id} justifyContent="space-between" marginBottom={1}>
@@ -1203,9 +1162,8 @@ export function TuiApp() {
 
           {activeTab === 'Status' && (
             <Box flexDirection="column">
-              <Box borderStyle="classic" borderColor="blue">
-                <Text bold color="blue">Status</Text>
-              </Box>
+              <Text bold color="blue">Status</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
               <Box flexDirection="column" marginTop={1}>
                 <Text>API Reachable: Yes</Text>
                 <Text>SQLite Engine status: {dbStatus}</Text>
@@ -1221,19 +1179,16 @@ export function TuiApp() {
         </Box>
       </Box>
 
-      {/* 3. Bottom Prompt Input & Shortcuts hints */}
-      <Box borderStyle="classic" borderColor="cyan" flexDirection="column" paddingX={1}>
-        <Box flexDirection="row">
-          <Text bold color="magenta">&gt; </Text>
+      {/* 3. Bottom Input Bar */}
+      <Text color="gray">{''.padEnd(terminalWidth - 1, '─')}</Text>
+      <Box paddingX={1} paddingY={0}>
+        <Box flexDirection="row" flexGrow={1}>
+          <Text bold color="magenta">{'> '}</Text>
           <Text>{inputVal}</Text>
-          {isStreaming && <Text color="yellow"> streaming...</Text>}
+          {isStreaming && <Text color="yellow"> ...</Text>}
         </Box>
-        <Box justifyContent="space-between" marginTop={1}>
-          <Text color="gray">Enter: send | Tab: nav | Ctrl+N: new session | Ctrl+C: exit</Text>
-          <Box flexDirection="row">
-            <Text color="gray">{permissionMode.toUpperCase()} | </Text>
-            <Text color="gray">{activeTab}</Text>
-          </Box>
+        <Box>
+          <Text color="gray">Tab:nav | Enter:send | ^N:session</Text>
         </Box>
       </Box>
     </Box>

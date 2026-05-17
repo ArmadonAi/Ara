@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Bot, User, ShieldAlert, Cpu, Database, 
   Terminal, Check, X, ArrowRight, MessageSquare, 
@@ -94,6 +94,8 @@ function App() {
   const [activeModel, setActiveModel] = useState('Gemini');
   const [inputVal, setInputVal] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<{ name: string; dataUrl: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -407,9 +409,27 @@ function App() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSelectedFiles(prev => [...prev, { name: file.name, dataUrl: reader.result as string }]);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
+  const handleRemoveFile = (idx: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputVal.trim() || isStreaming) return;
+    if ((!inputVal.trim() && selectedFiles.length === 0) || isStreaming) return;
 
     let currentSessionId = activeSessionId;
     
@@ -440,12 +460,13 @@ function App() {
 
     const userText = inputVal;
     setInputVal('');
+    setSelectedFiles([]);
 
     // Append user message to state
     const userMsg: Message = {
       id: Math.random().toString(),
       role: 'user',
-      content: userText,
+      content: userText + (selectedFiles.length > 0 ? `\n[${selectedFiles.length} file(s) attached]` : ''),
       createdAt: new Date()
     };
     setMessages(prev => [...prev, userMsg]);
@@ -607,6 +628,26 @@ function App() {
   };
 
   if (page === "canvas") { return <CanvasPage />; }
+  function renderMessageContent(content: string) {
+    const parts: JSX.Element[] = [];
+    let remaining = content;
+    let idx = 0;
+    const re = /\[(Image|File): ([^\]]+)\]\(([^)]+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(remaining)) !== null) {
+      if (m.index > 0) parts.push(<span key={idx++} style={{whiteSpace:'pre-wrap'}}>{remaining.slice(0, m.index)}</span>);
+      if (m[1] === 'Image') {
+        parts.push(<div key={idx++} style={{margin:'4px 0'}}><img src={m[3]} alt={m[2]} style={{maxWidth:240,maxHeight:200,borderRadius:8,objectFit:'contain'}} /><div style={{fontSize:11,opacity:0.6}}>{m[2]}</div></div>);
+      } else {
+        parts.push(<div key={idx++} style={{fontSize:12,opacity:0.8}}>File: {m[2]}</div>);
+      }
+      remaining = remaining.slice(m.index + m[0].length);
+      re.lastIndex = 0;
+    }
+    if (remaining) parts.push(<span key={idx++} style={{whiteSpace:'pre-wrap'}}>{remaining}</span>);
+    return parts;
+  }
+
   return (
     <div className="ara-container">
       {/* Upper Glassmorphic Navbar */}
@@ -819,8 +860,8 @@ function App() {
                   <div className="bubble-sender">
                     {msg.role === 'user' ? 'คุณ' : msg.role === 'assistant' ? 'Ara' : 'ระบบ'}
                   </div>
-                  <div className="bubble-content" style={{ whiteSpace: 'pre-wrap' }}>
-                    {msg.content}
+                  <div className="bubble-content">
+                    {renderMessageContent(msg.content)}
                   </div>
                 </div>
               </div>
@@ -829,17 +870,30 @@ function App() {
 
           <form onSubmit={handleSendMessage} className="chat-input-form">
             <div className="input-wrapper">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
-                placeholder="คุยกับ Ara... พิมพ์คำสั่ง เช่น 'write' หรือ 'run' เพื่อทดสอบระบบ Approval Gate"
+                placeholder="คุยกับ Ara..."
                 disabled={isStreaming}
               />
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} multiple hidden />
+              <button type="button" className="btn-upload" onClick={() => fileInputRef.current?.click()} disabled={isStreaming}>
+                +
+              </button>
               <button type="submit" className="btn-send" disabled={isStreaming}>
                 <ArrowRight size={18} />
               </button>
             </div>
+            {selectedFiles.length > 0 && (
+              <div className="file-chips">
+                {selectedFiles.map((f, i) => (
+                  <span key={i} className="file-chip">
+                    {f.name} <button type="button" className="chip-remove" onClick={() => handleRemoveFile(i)}>x</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </form>
         </section>
 
