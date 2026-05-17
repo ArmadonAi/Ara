@@ -1599,6 +1599,71 @@ mcp
     }
   });
 
+mcp
+  .command('discover')
+  .description('Scan local ports for running MCP HTTP servers')
+  .option('--start-port <n>', 'Starting port', parseInt, 3100)
+  .option('--end-port <n>', 'Ending port', parseInt, 3200)
+  .action(async (opts: { startPort?: number; endPort?: number }) => {
+    const start = opts.startPort || 3100;
+    const end = opts.endPort || 3200;
+    console.log('\n Scanning ports ' + start + '-' + end + ' for MCP HTTP servers...');
+    async function scanPort(port: number): Promise<{ port: number; name?: string; url?: string } | null> {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 1000);
+        const res = await fetch('http://127.0.0.1:' + port, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {} } }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (res.ok) {
+          const data = await res.json() as any;
+          if (data && data.result) return { port, name: data.result.serverInfo?.name || 'MCP Server', url: 'http://127.0.0.1:' + port };
+        }
+        return null;
+      } catch { return null; }
+    }
+    const found: any[] = [];
+    for (let p = start; p <= end; p++) { const r = await scanPort(p); if (r) found.push(r); }
+    if (found.length === 0) { console.log('  No MCP servers discovered.\n'); return; }
+    for (const s of found) console.log('  Found: ' + s.name + ' at ' + s.url);
+    console.log();
+  });
+
+mcp
+  .command('list-known')
+  .description('List known MCP server packages that can be installed')
+  .action(() => {
+    const known = [
+      { n: 'Filesystem', p: '@modelcontextprotocol/server-filesystem' },
+      { n: 'GitHub', p: '@modelcontextprotocol/server-github' },
+      { n: 'SQLite', p: '@modelcontextprotocol/server-sqlite' },
+      { n: 'Playwright', p: '@modelcontextprotocol/server-playwright' },
+      { n: 'Memory', p: '@modelcontextprotocol/server-memory' },
+      { n: 'Brave Search', p: '@modelcontextprotocol/server-brave-search' },
+      { n: 'Fetch', p: '@modelcontextprotocol/server-fetch' },
+    ];
+    console.log('\n Known MCP Servers:');
+    for (const s of known) console.log('  ' + s.n.padEnd(20) + s.p);
+    console.log('\n  Install: npm install -g <package-name>\n');
+  });
+
+mcp
+  .command('install <package>')
+  .description('Install an MCP server npm package')
+  .action(async (pkg: string) => {
+    const { execSync } = require('node:child_process');
+    try {
+      console.log('\n Installing MCP server: ' + pkg + '...');
+      try { execSync('npx -y ' + pkg + ' --version', { timeout: 30000, stdio: 'pipe' }); }
+      catch { execSync('npm install -g ' + pkg, { timeout: 60000, stdio: 'inherit' }); }
+      console.log('  Installed: ' + pkg + '\n');
+    } catch (e: any) { console.error('  Failed: ' + e.message + '\n'); }
+  });
+
 // -------------------------------------------------------------
 // GitHub Integration Commands
 // -------------------------------------------------------------
@@ -2530,7 +2595,7 @@ program
   .action(async (opts: { keep?: number; dir?: string }) => {
     const fs = require('node:fs');
     const path = require('node:path');
-    const { compactJSONL, compactJSONLDir, getJSONLDirStats, getJSONLSize } = require('./packages/tools/src/maintenance.ts');
+    const { compactJSONL, compactJSONLDir, getJSONLDirStats, getJSONLSize } = await import('@ara/tools');
     const cwd = process.cwd();
     const keep = Math.max(opts.keep || 1000, 100);
     let totalRemoved = 0;
@@ -2593,7 +2658,7 @@ program
   .action(async () => {
     const fs = require('node:fs');
     const path = require('node:path');
-    const { getJSONLDirStats, getJSONLSize } = require('./packages/tools/src/maintenance.ts');
+    const { getJSONLDirStats, getJSONLSize } = await import('@ara/tools');
     const cwd = process.cwd();
 
     const targets: { name: string; dir: string }[] = [

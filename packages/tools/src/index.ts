@@ -1,4 +1,5 @@
 import type { Tool, ToolContext, ToolResult } from '@ara/shared';
+export { compactJSONL, compactJSONLDir, getJSONLDirStats, getJSONLSize } from './maintenance';
 import { z } from 'zod';
 import * as fs from 'fs/promises';
 import * as path from 'path';

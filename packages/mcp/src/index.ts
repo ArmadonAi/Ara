@@ -16,3 +16,4 @@ export {
   reloadAuditFromDisk, getAuditCount,
 } from './mcpAudit';
 export { MCPHealthMonitor } from './mcpHealth';
+export { discoverHTTPServers, getKnownServers, installMCPServer, mergeServerConfig } from './mcpDiscovery';
