@@ -39,7 +39,7 @@ describe('Ara Permission Engine - Unit Verification Suite', () => {
 
   test('Path safety resolve - symlink checks if target points outside', () => {
     const linkPath = path.join(cwd, 'test-outside-link.txt');
-    
+
     let created = false;
     try {
       if (fs.existsSync(linkPath) || fs.lstatSync(linkPath).isSymbolicLink()) {
@@ -47,8 +47,11 @@ describe('Ara Permission Engine - Unit Verification Suite', () => {
       }
     } catch (e) {}
 
+    // Use an absolute path outside workspace that is guaranteed to exist on Linux/macOS
+    // On Windows, symlink creation may fail due to privilege restrictions
+    const outsideTarget = process.platform === 'win32' ? 'C:\\nonexistent-target' : '/tmp';
     try {
-      fs.symlinkSync('../../package.json', linkPath);
+      fs.symlinkSync(outsideTarget, linkPath);
       created = true;
     } catch (e) {
       // Gracefully handle Windows symlink privileges limit
