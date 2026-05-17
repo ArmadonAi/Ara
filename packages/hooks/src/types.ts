@@ -9,6 +9,7 @@ export type HookEventName =
   | 'ApprovalRequested'
   | 'ApprovalResolved'
   | 'Stop'
+  | 'CheckpointCreated'
   | 'SessionEnd';
 
 export interface HookEventPayload {

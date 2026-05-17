@@ -15,6 +15,7 @@ Ara implements six precise, highly descriptive lifecycle hooks:
 | `PreToolUse` | Executed directly before any tool is run (after JSON validation, before permission checks) | **Yes** (Bypasses tool execution entirely) | Pre-validation check, dependency checks, mock returns |
 | `PostToolUse` | Fired when a tool returns `success: true` | **No** (Informational only) | Automated test execution, state tracking, log sync |
 | `ToolFailed` | Triggered when a tool runs but fails (`success: false` or throws) | **No** (Informational only) | Debug logs recovery, automatic error report generation |
+| `CheckpointCreated` | Fired after a checkpoint is successfully saved to disk (in `@ara/checkpoints`) | **No** (Informational only) | Notification bots, external tracking, CI sync after workspace snapshot |
 | `SessionEnd` | Fired at the end of the streaming generation loop | **No** (Informational only) | Automated linting, workspace health summaries |
 
 ---
@@ -79,6 +80,7 @@ Ara exposes dedicated commands to monitor, validate, and debug lifecycle hooks d
   ```bash
   ara hooks test PreToolUse
   ```
+* **`/checkpoint create <reason>`**: Manually create a checkpoint, triggering the `CheckpointCreated` lifecycle hook (see slash command reference above).
 
 ### 2. Interactive Slash Commands
 

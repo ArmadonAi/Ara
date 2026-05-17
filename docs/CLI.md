@@ -123,7 +123,67 @@ ara
 
   Blocks the tool, returns a rejection status to the agent loop, and resumes agent planning.
 
-### 4. System Diagnostics & Healthchecks
+### 4. Checkpoints & Rewind
+
+Checkpoints capture workspace file states and session transcript snapshots, enabling safe code and conversation rewind.
+
+* **List all checkpoints**:
+
+  ```bash
+  ara checkpoints
+  ```
+
+  Displays a chronological list of all created checkpoints with their session ID, reason, timestamp, file count, and message count.
+
+* **Create a manual checkpoint**:
+
+  ```bash
+  ara checkpoint create "Before major refactor"
+  ```
+
+  Spawns a named safety snapshot for the active session.
+
+* **Show checkpoint details**:
+
+  ```bash
+  ara checkpoint show chk_a1b2c3d4
+  ```
+
+  Prints full metadata for the checkpoint including file list, git head, and message count.
+
+* **Show diff from checkpoint**:
+
+  ```bash
+  ara checkpoint diff chk_a1b2c3d4
+  ```
+
+  Shows files that have been created, modified, or deleted since the checkpoint was taken. Files that were skipped (large, binary, or secrets) are listed at the bottom.
+
+* **Restore to checkpoint**:
+
+  ```bash
+  ara restore chk_a1b2c3d4 --mode code_only
+  ara restore chk_a1b2c3d4 --mode conversation_only
+  ara restore chk_a1b2c3d4 --mode both
+  ```
+
+  Restores files, conversation, or both. **A pre-restore safety checkpoint is automatically created before the restore runs**, so you can always undo a rewind.
+
+  | Mode | Files | Messages |
+  |------|-------|----------|
+  | `code_only` | Restored | Left as-is |
+  | `conversation_only` | Left as-is | Rewound to snapshot |
+  | `both` | Restored | Rewound to snapshot |
+
+* **Rewind helper**:
+
+  ```bash
+  ara rewind
+  ```
+
+  Prints available checkpoints and suggests restore commands for quick rollback.
+
+### 5. System Diagnostics & Healthchecks
 
 * **Status Diagnostics**:
 
@@ -171,8 +231,8 @@ ara
 
 When running the interactive TUI (`ara tui`), use the following key-bindings:
 
-* **`Tab` / `Shift+Tab`**: Cycle between tabs (Chat ➔ Approvals ➔ Tools ➔ Memory ➔ Skills ➔ Audit ➔ Status).
-* **`Up Arrow` / `Down Arrow`**: Scroll through chat sessions listed in the left sidebar.
+* **`Tab` / `Shift+Tab`**: Cycle between tabs (Chat ➔ Subagents ➔ Approvals ➔ Checkpoints ➔ Tools ➔ Memory ➔ Skills ➔ Audit ➔ Status).
+* **`Up Arrow` / `Down Arrow`**: Scroll through items in the selected panel (sessions list, checkpoints list, approvals list, etc.).
 * **`Ctrl+N`**: Create a new session.
 * **`Ctrl+L`**: Clear current chat panel logs buffer.
 - **`Ctrl+C`**: Close and exit the TUI dashboard.

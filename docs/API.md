@@ -194,6 +194,100 @@ Updates model configuration settings for a singular chat session only (Session c
 
 ---
 
+## 🔒 Workspace Checkpoints & Rewind
+
+Checkpoints capture the full state of the workspace (files + session transcript) at a point in time, enabling safe code and conversation rewind.
+
+### `GET /api/checkpoints`
+List all checkpoints across the workspace.
+* **Response `200 OK`**:
+```json
+[
+  {
+    "id": "chk_a1b2c3d4",
+    "sessionId": "sess-82a17b",
+    "reason": "Refactor start",
+    "createdAt": "2026-05-17T08:10:00.000Z",
+    "createdBy": "user",
+    "messageCount": 4,
+    "filesCount": 12
+  }
+]
+```
+
+### `GET /api/sessions/:id/checkpoints`
+List checkpoints filtered to a specific session.
+* **Response `200 OK`**: Same structure as `GET /api/checkpoints`.
+
+### `POST /api/sessions/:id/checkpoints`
+Create a manual (or automated) checkpoint. Before mutating tools (`write_file`, `edit_file`, `run_shell`), Ara creates an automatic safety checkpoint here.
+* **Payload**:
+```json
+{
+  "reason": "Refactor start",
+  "createdBy": "user",
+  "specificFiles": ["src/app.ts", "src/utils.ts"],
+  "metadata": { "tag": "before-refactor" }
+}
+```
+* **Response `201 Created`**:
+```json
+{
+  "id": "chk_a1b2c3d4",
+  "sessionId": "sess-82a17b",
+  "reason": "Refactor start",
+  "createdAt": "2026-05-17T08:10:00.000Z",
+  "messageCount": 4,
+  "filesCount": 12,
+  "gitHead": "abc123..."
+}
+```
+
+### `GET /api/checkpoints/:id`
+Retrieve full details of a specific checkpoint including its file snapshot index.
+* **Response `200 OK`**: Full `Checkpoint` object.
+* **Response `404 Not Found`**: `Checkpoint not found`.
+
+### `GET /api/checkpoints/:id/diff`
+Return a structured diff of the current workspace relative to the checkpoint state.
+* **Response `200 OK`**:
+```json
+{
+  "filesChangedSince": ["src/app.ts"],
+  "filesCreatedSince": ["src/newFeature.ts"],
+  "filesDeletedSince": ["src/oldFeature.ts"],
+  "filesSkipped": ["node_modules/pkg/index.js"],
+  "messageCountDiff": 5,
+  "transcriptSeqDiff": 8
+}
+```
+
+### `POST /api/checkpoints/:id/restore`
+Restore workspace files and/or session messages to checkpoint state. **A pre-restore safety checkpoint** is automatically created before the restore runs, so you can always undo a rewind.
+* **Payload**:
+```json
+{
+  "mode": "code_only"
+}
+```
+* **Restore modes**:
+  | Mode | Files | Messages |
+  |------|-------|----------|
+  | `code_only` | Restored | Left as-is |
+  | `conversation_only` | Left as-is | Rewound to snapshot |
+  | `both` | Restored | Rewound to snapshot |
+* **Response `200 OK`**:
+```json
+{
+  "success": true,
+  "restoredFiles": ["src/app.ts", "src/utils.ts"],
+  "messageCount": 4,
+  "message": "Restored chk_a1b2c3d4 with mode code_only"
+}
+```
+
+---
+
 ## 📜 Incremental Event-Based Transcripts
 
 ### `GET /api/sessions/:id/transcript`

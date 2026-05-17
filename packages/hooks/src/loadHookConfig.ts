@@ -39,6 +39,7 @@ export function loadHookConfig(cwd: string = process.cwd()): { hooks: HooksMap; 
         ApprovalRequested: [],
         ApprovalResolved: [],
         Stop: [],
+        CheckpointCreated: [],
         SessionEnd: []
       }
     };
@@ -62,6 +63,7 @@ export function loadHookConfig(cwd: string = process.cwd()): { hooks: HooksMap; 
           ApprovalRequested: [],
           ApprovalResolved: [],
           Stop: [],
+          CheckpointCreated: [],
           SessionEnd: []
         },
         diagnostics: errorMsg
@@ -80,6 +82,7 @@ export function loadHookConfig(cwd: string = process.cwd()): { hooks: HooksMap; 
         ApprovalRequested: [],
         ApprovalResolved: [],
         Stop: [],
+        CheckpointCreated: [],
         SessionEnd: []
       },
       diagnostics: `Hook Configuration invalid JSON in ${selectedPath}: ${err.message}`

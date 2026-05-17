@@ -17,10 +17,19 @@ All target components of Ara's monorepo have been audited, stabilized, and verif
 | **A** | Repository Audit | `PASSED` | Monorepo structure completely intact. |
 | **B** | `bun install` | `PASSED` | Registered workspaces links and updated dependencies package.json files. |
 | **B** | `bun run typecheck` | `PASSED` | `tsc --noEmit` completed with **0 warnings** and **0 errors** across all workspaces. |
-| **B** | `bun run test` | `PASSED` | **58 tests passing, 179 expectations matched** in 2.25s. |
+| **B** | `bun run test` | `PASSED` | **69 tests passing, 236 expectations matched** in 5.72s (includes checkpoint, permissions, hooks, and CLI suites). |
+| **B** | `bun run typecheck` | `PASSED` | `tsc --noEmit` completed with **0 warnings** and **0 errors** across all workspaces. |
 | **B** | `bun run build` | `PASSED` | Production packages built flawlessly (API endpoints, Vite Web app, and CLI commander binary bundle). |
+| **B** | `bun run build:cli` | `PASSED` | CLI bundled 136 modules in ~200ms, `yoga.wasm` copied to `apps/cli/dist/`. |
 | **11**| Permission Engine | `PASSED` | Allow, Ask, Deny decisions, command blocking, path traversals security, symlinks escape blocks. |
 | **12**| Lifecycle Hooks | `PASSED` | Local settings config, 6 events, command/HTTP execution, scrubbing secrets, timeout control. |
+| **15**| Checkpoint & Rewind — CLI commands | `PASSED` | `ara checkpoints`, `ara checkpoint create/show/diff`, `ara restore --mode`, `ara rewind` all confirmed in `apps/cli/src/main.tsx`. |
+| **15**| Checkpoint & Rewind — Slash commands | `PASSED` | `/checkpoints`, `/checkpoint create/show/diff`, `/restore <id> [mode]`, `/rewind` all confirmed in `packages/commands/src/index.ts`. |
+| **15**| Checkpoint & Rewind — API endpoints | `PASSED` | 7 endpoints: list, create, show, diff, restore (+ session-scoped list, pre-restore safety checkpoint) in `apps/api/src/index.ts`. |
+| **15**| Checkpoint Tests | `PASSED` | Secret file exclusion, binary detection, manual creation, diff detection, code_only and conversation_only restore modes all passing. |
+| **15**| Typecheck | `PASSED` | `tsc --noEmit` 0 errors. |
+| **15**| Build | `PASSED` | `bun run build` + `bun run build:cli` both passed. |
+| **15**| Build :cli | `PASSED` | CLI bundled 136 modules, yoga.wasm copied. |
 
 ---
 
@@ -57,6 +66,12 @@ Our test suite [tests/ara.test.ts](file:///d:/Projects/Github/Ara/tests/ara.test
    - Relevant memory keyword substring search matching.
 6. **Skill System YAML Metadata (Phase H):**
    - Progressive loading of frontmatter tags, description, and procedure lists.
+7. **Checkpoint & Rewind — File Snapshots & Restore (Phase 15):**
+   - Secret file identification and binary buffer detection.
+   - Manual checkpoint creation and listing via CLI and direct API.
+   - Diff detection for modifications, creations, and deletions relative to a checkpoint.
+   - `code_only` restore — restores files in the workspace, does not rewind conversation history.
+   - `conversation_only` restore — rewinds conversation messages in the database, does not touch workspace files.
 
 ---
 

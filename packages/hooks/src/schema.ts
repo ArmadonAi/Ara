@@ -31,6 +31,7 @@ export const HooksMapSchema = z.object({
   ApprovalRequested: z.array(HookSchema).default([]),
   ApprovalResolved: z.array(HookSchema).default([]),
   Stop: z.array(HookSchema).default([]),
+  CheckpointCreated: z.array(HookSchema).default([]),
   SessionEnd: z.array(HookSchema).default([]),
 });
 
@@ -44,6 +45,7 @@ export const SettingsSchema = z.object({
     ApprovalRequested: [],
     ApprovalResolved: [],
     Stop: [],
+    CheckpointCreated: [],
     SessionEnd: []
   }),
 });
