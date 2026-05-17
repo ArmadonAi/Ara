@@ -1539,6 +1539,21 @@ app.post('/api/sessions/:id/compact', (c) => {
     compactedToMessageId: compactedFiltered[compactedFiltered.length - 1]?.id
   });
 
+  // Auto-analyze session transcript for skill learning
+  try {
+    const records = readTranscript(id);
+    if (records.length > 0) {
+      const { transcriptToEntries } = await import('./routes');
+      const entries = records
+        .filter((r: any) => r && r.payload && (r.eventType === 'message' || r.payload.role))
+        .map((r: any) => ({ role: r.payload.role || 'unknown', content: r.payload.content || '' }));
+      if (entries.length > 0) {
+        const { analyzeSession } = await import('@ara/skill-learning');
+        await analyzeSession('auto-' + id, entries, process.cwd());
+      }
+    }
+  } catch {}
+
   return c.json({
     success: true,
     compactedCount: compactedFiltered.length,

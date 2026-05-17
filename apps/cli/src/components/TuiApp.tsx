@@ -1107,45 +1107,46 @@ export function TuiApp() {
           {activeTab === 'Learning' && (
             <Box flexDirection="column" flexGrow={1}>
               <Text bold color="green">Skill Learning</Text>
-              <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
+              <Text color="gray">{''.padEnd(terminalWidth - 40, '-')}</Text>
               {!apiReachable ? (
                 <Text color="red">API offline.</Text>
               ) : (
                 <Box flexDirection="row" flexGrow={1} marginTop={1}>
-                  <Box width={35} flexDirection="column" marginRight={1}>
+                  <Box width={36} flexDirection="column" marginRight={1}>
                     <Text bold color="yellow">Overview</Text>
-                    <Text color="gray">Workflows: {learningData?.workflowCount || 0}</Text>
-                    <Text color="gray">Repeated: {learningData?.repeatedCount || 0}</Text>
-                    <Text color="gray">Drafts: {learningDrafts.length}</Text>
-                    {learningDrafts.length > 0 && (
+                    <Text color="gray">Workflow fingerprints: {learningData?.workflowCount || 0}</Text>
+                    <Text color="gray">Repeated (>=3): {learningData?.repeatedCount || 0}</Text>
+                    <Text color="gray">Draft skills: {learningDrafts.length}</Text>
+                    {learningDrafts.filter((d: any) => d.status === 'draft').length > 0 && (
                       <>
-                        <Text bold color="yellow" marginTop={1}>Drafts</Text>
-                        {learningDrafts.slice(0, 6).map((d: any) => (
+                        <Text bold color="yellow" marginTop={1}>Pending Drafts</Text>
+                        {learningDrafts.filter((d: any) => d.status === 'draft').slice(0, 5).map((d: any) => (
                           <Box key={d.id} paddingX={1}>
-                            <Text color="white">{(d.status || '').slice(0, 6).padEnd(8)} {(d.proposedSkillName || '').slice(0, 18)}</Text>
+                            <Text color="green">{(d.proposedSkillName || '').slice(0, 24)}  {Math.round((d.confidence || 0) * 100)}%</Text>
                           </Box>
                         ))}
                       </>
                     )}
                   </Box>
                   <Box flexGrow={1} flexDirection="column">
-                    <Text bold color="yellow">Commands</Text>
-                    <Text color="gray">ara skills suggest              - Overview</Text>
-                    <Text color="gray">ara skills workflows            - Repeated workflows</Text>
-                    <Text color="gray">ara skills analyze-recent       - Auto-detect patterns</Text>
-                    <Text color="gray">ara skills drafts               - List drafts</Text>
-                    <Text color="gray">ara skills draft &lt;id&gt;      - Show draft</Text>
-                    <Text color="gray">ara skills approve &lt;id&gt;    - Approve draft</Text>
-                    <Text color="gray">ara skills reject &lt;id&gt;     - Reject draft</Text>
-                    <Text color="gray" marginTop={1}>Slash: /skills suggest, /skills drafts</Text>
-                    <Text color="gray">Note: Approval requires explicit CLI command</Text>
+                    <Text bold color="yellow">Learning Pipeline</Text>
+                    <Text color="gray">1. Session compacted -> auto-analyzed</Text>
+                    <Text color="gray">2. Repeated patterns detected</Text>
+                    <Text color="gray">3. At 3+ repetitions -> draft created</Text>
+                    <Text color="gray">4. ara skills draft &lt;id&gt; to review</Text>
+                    <Text color="gray">5. ara skills approve &lt;id&gt; to publish</Text>
+                    <Text color="gray" marginTop={1}>  ara skills analyze-recent   Run auto-analysis</Text>
+                    <Text color="gray">  ara skills drafts            List all drafts</Text>
+                    <Text color="gray">  ara skills approve &lt;id&gt;     Write SKILL.md</Text>
+                    <Text color="gray">  ara skills stats             Usage stats</Text>
+                    <Text color="gray" marginTop={1}>Auto-analyze runs on session compact</Text>
                   </Box>
                 </Box>
               )}
             </Box>
           )}
 
-          {activeTab === 'Audit' && (
+          activeTab === 'Audit' && (
             <Box flexDirection="column">
               <Text bold color="yellow">Audit Logs</Text>
               <Text color="gray">{''.padEnd(terminalWidth - 40, '─')}</Text>
