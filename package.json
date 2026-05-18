@@ -16,7 +16,6 @@
     "start:api": "bun run --cwd apps/api src/index.ts",
     "start:web": "bun run --cwd apps/web preview --host 0.0.0.0 --port 5173",
     "start:worker": "bun run --cwd apps/worker src/index.ts",
-    "npm:publish": "bun run scripts/publish.ts",
     "build": "bun run --cwd apps/api build && bun run --cwd apps/web build && bun run --cwd apps/cli build",
     "build:cli": "bun run --cwd apps/cli build",
     "typecheck": "tsc --noEmit",

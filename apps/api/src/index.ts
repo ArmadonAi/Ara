@@ -54,6 +54,7 @@ import {
   generateDraft, listDrafts, loadDraft, updateDraftStatus, approveDraft,
   listSkillStats, recordSkillUsage, listSkillLearningAudit, initStatsStore,
 } from '@ara/skill-learning';
+import { getCodexSessionManager } from '@ara/coding-agent';
 import { 
   DelegateTaskTool, 
   loadAgentProfiles, 
@@ -69,6 +70,12 @@ import {
   restoreCheckpoint,
   shouldCreateCheckpointBeforeTool
 } from '@ara/checkpoints';
+import { Gateway, getGateway } from "./gateway";
+import { registerMethod } from "./protocol";
+import type { AutomationTrigger } from "./channel";
+import { TelegramChannel } from "./telegram";
+import { LineChannel } from "./line";
+import { handleLineWebhook, getLineStatus } from './line';
 
 // 1. Initialize SQLite database for local-first session persistence
 const db = new Database('ara.sqlite');
@@ -137,6 +144,10 @@ db.run(`
     FOREIGN KEY(automation_id) REFERENCES automations(id)
   )
 `);
+// Migration: add channel_trigger and keyword columns if missing
+try { db.run('ALTER TABLE automations ADD COLUMN channel_trigger TEXT DEFAULT NULL'); } catch {}
+try { db.run('ALTER TABLE automations ADD COLUMN keyword TEXT DEFAULT NULL'); } catch {}
+try { db.run('ALTER TABLE automations ADD COLUMN reply_channel TEXT DEFAULT NULL'); } catch {}
 
 db.run(`
   CREATE TABLE IF NOT EXISTS subagent_runs (
@@ -402,6 +413,29 @@ async function runHeadlessAutomation(automation: any) {
     );
   }
 }
+
+// ─── Channel-based automation trigger ──────────────
+// Called by Telegram/LINE handlers when a message arrives.
+// If a user's text matches an automation keyword, runs it headlessly.
+function findAndTriggerChannelAutomation(channel: string, userId: string, text: string): boolean {
+  const normalized = text.toLowerCase().trim();
+  const rows = db.query(
+    'SELECT * FROM automations WHERE enabled = 1 AND channel_trigger = ? AND keyword IS NOT NULL AND keyword != ?'
+  ).all(channel, '') as any[];
+  for (const row of rows) {
+    const keyword = (row.keyword || '').toLowerCase().trim();
+    if (keyword && normalized.includes(keyword)) {
+      console.log(`Automation "${row.name}" triggered via ${channel} by ${userId} (keyword: "${keyword}")`);
+      runHeadlessAutomation(row);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Closure used by both REST webhooks and gateway channels
+const triggerAutomation: AutomationTrigger = (channel, userId, text) =>
+  findAndTriggerChannelAutomation(channel, userId, text);
 
 // 3. Configure Hono App
 const app = new Hono();
@@ -827,6 +861,9 @@ app.get('/api/automations', (c) => {
     cron: row.cron,
     prompt: row.prompt,
     enabled: row.enabled === 1,
+    channelTrigger: row.channel_trigger || null,
+    keyword: row.keyword || null,
+    replyChannel: row.reply_channel || null,
     lastRun: row.last_run,
     createdAt: row.created_at
   })));
@@ -834,11 +871,11 @@ app.get('/api/automations', (c) => {
 
 // POST /api/automations: Create an automation
 app.post('/api/automations', async (c) => {
-  const { name, cron, prompt, enabled } = await c.req.json();
+  const { name, cron, prompt, enabled, channelTrigger, keyword, replyChannel } = await c.req.json();
   const id = Math.random().toString(36).substring(7);
   db.run(
-    'INSERT INTO automations (id, name, cron, prompt, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, name, cron, prompt, enabled !== false ? 1 : 0, new Date().toISOString()]
+    'INSERT INTO automations (id, name, cron, prompt, enabled, channel_trigger, keyword, reply_channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, name, cron || '', prompt, enabled !== false ? 1 : 0, channelTrigger || null, keyword || null, replyChannel || null, new Date().toISOString()]
   );
   return c.json({ success: true, id });
 });
@@ -846,13 +883,16 @@ app.post('/api/automations', async (c) => {
 // PUT /api/automations/:id: Update an automation
 app.put('/api/automations/:id', async (c) => {
   const id = c.req.param('id');
-  const { name, cron, prompt, enabled } = await c.req.json();
-  
+  const { name, cron, prompt, enabled, channelTrigger, keyword, replyChannel } = await c.req.json();
+
   if (name !== undefined) db.run('UPDATE automations SET name = ? WHERE id = ?', [name, id]);
   if (cron !== undefined) db.run('UPDATE automations SET cron = ? WHERE id = ?', [cron, id]);
   if (prompt !== undefined) db.run('UPDATE automations SET prompt = ? WHERE id = ?', [prompt, id]);
   if (enabled !== undefined) db.run('UPDATE automations SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id]);
-  
+  if (channelTrigger !== undefined) db.run('UPDATE automations SET channel_trigger = ? WHERE id = ?', [channelTrigger || null, id]);
+  if (keyword !== undefined) db.run('UPDATE automations SET keyword = ? WHERE id = ?', [keyword || null, id]);
+  if (replyChannel !== undefined) db.run('UPDATE automations SET reply_channel = ? WHERE id = ?', [replyChannel || null, id]);
+
   return c.json({ success: true });
 });
 
@@ -1071,21 +1111,6 @@ async function downloadTelegramFile(token: string, fileId: string): Promise<stri
   } catch { return null; }
 }
 
-async function downloadLineFile(token: string, messageId: string, ext: string): Promise<string | null> {
-  try {
-    ensureUploadsDir();
-    const dl = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!dl.ok) return null;
-    const buf = await dl.arrayBuffer();
-    const localName = `line_${Date.now()}.${ext}`;
-    const localPath = path.join(UPLOADS_DIR, localName);
-    fs.writeFileSync(localPath, Buffer.from(buf));
-    return localPath;
-  } catch { return null; }
-}
-
 // -------------------------------------------------------------
 // Telegram & LINE Chatbot Webhooks
 // -------------------------------------------------------------
@@ -1207,105 +1232,11 @@ app.post('/api/webhooks/telegram', async (c) => {
 
 // POST /api/webhooks/line: LINE Chatbot Integration Gateway
 app.post('/api/webhooks/line', async (c) => {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) {
-    return c.json({ error: 'LINE_CHANNEL_ACCESS_TOKEN is not configured.' }, 400);
-  }
-
-  try {
-    const body = await c.req.json();
-    if (!body || !Array.isArray(body.events)) {
-      return c.json({ ok: true, note: 'Ignored empty or invalid events payload.' });
-    }
-
-    for (const event of body.events) {
-      if (event.type !== 'message' || !event.message || !event.source?.userId) continue;
-      const replyToken = event.replyToken;
-      const userId = event.source.userId;
-      const sanitizedId = userId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 30);
-      const sessionId = `line-${sanitizedId}`;
-      let userContent = '';
-      if (event.message.type === 'text') {
-        userContent = (event.message.text || '').trim();
-      }
-      if (event.message.type === 'image') {
-        const p = await downloadLineFile(token, event.message.id as string, 'jpg');
-        userContent = p ? `[Image: ${path.basename(p)}]` : '[Image: dl failed]';
-      }
-      if (!userContent) continue;
-
-      // Get or create session
-
-        // Get or create session
-        let session = getSession(sessionId);
-        if (!session) {
-          db.run(
-            'INSERT INTO sessions (id, title, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-            [sessionId, `LINE Chat (${sanitizedId.slice(0, 6)})`, 'Gemini', new Date().toISOString(), new Date().toISOString()]
-          );
-          session = getSession(sessionId)!;
-        }
-
-        // Save user message
-        const userMsg: Message = {
-          id: Math.random().toString(36).substring(7),
-          role: 'user',
-          content: userContent,
-          createdAt: new Date()
-        };
-        saveMessage(sessionId, userMsg);
-        session.messages.push(userMsg);
-
-        // Execute ReAct agent loop to completion (non-streaming for webhook reply)
-        let fullContent = '';
-        for await (const chunk of runtime.streamAgentLoop(session, userContent, {
-          onAuditLog: (log) => {
-            const auditId = Math.random().toString(36).substring(7);
-            db.run(
-              'INSERT INTO audit_logs (id, session_id, tool_name, input, output, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-              [auditId, sessionId, log.toolName, JSON.stringify(log.input), log.outputSummary, log.status, new Date().toISOString()]
-            );
-          }
-        })) {
-          if (chunk.text) {
-            fullContent += chunk.text;
-          }
-        }
-
-        // Save finalized assistant message
-        const assistantMsg: Message = {
-          id: Math.random().toString(36).substring(7),
-          role: 'assistant',
-          content: fullContent,
-          createdAt: new Date()
-        };
-        saveMessage(sessionId, assistantMsg);
-
-        // Send message to LINE using reply token
-        await fetch('https://api.line.me/v2/bot/message/reply', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            replyToken: replyToken,
-            messages: [{
-              type: 'text',
-              text: fullContent || "Sorry, Ara couldn't compute a reply."
-            }]
-          })
-        });
-      }
-    }
-
-    return c.json({ ok: true });
-  } catch (err: any) {
-    console.error('LINE Webhook error:', err.message);
-    return c.json({ error: err.message }, 500);
-  }
+  const body = await c.req.text();
+  const signature = c.req.header('x-line-signature') || null;
+  const result = await handleLineWebhook(body, signature, runtime, db, triggerAutomation);
+  return c.json(result.body, result.status);
 });
-
 // POST /api/sessions/:id/messages: Send message and stream SSE reply
 app.post('/api/sessions/:id/messages', async (c) => {
   const id = c.req.param('id');
@@ -2294,11 +2225,18 @@ app.post('/api/mcp/tools/refresh', async (c) => {
   }
 });
 
+// ── Gateway Status Route ─────────────────────────
+app.get('/api/gateway/status', (c) => {
+  return c.json({ channels: gateway.getStatus() });
+});
+
 // ── GitHub Integration Routes ──────────────────────────────────────
 
 let ghInitialized = false;
 let ghClient: GitHubClient | null = null;
 let ghConfig: any = null;
+
+// ── Telegram bot state ─────────────────────────────────────────
 
 async function ensureGitHub() {
   if (!ghInitialized) {
@@ -2785,6 +2723,52 @@ app.get('/api/canvas/audit', async (c) => {
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
+// ── Codex / Coding Agent Routes ─────────────────────────────────
+const codexMgr = getCodexSessionManager();
+
+app.post('/api/codex/start', async (c) => {
+  try {
+    const { binary, prompt } = await c.req.json();
+    const session = codexMgr.start(binary, prompt);
+    return c.json({ id: session.info.id, binary: session.info.binary, status: session.info.status });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post('/api/codex/:id/send', async (c) => {
+  const id = c.req.param('id');
+  const session = codexMgr.get(id);
+  if (!session) return c.text('Session not found', 404);
+  try {
+    const { input } = await c.req.json();
+    if (!input) return c.text('Input required', 400);
+    session.send(input);
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get('/api/codex/:id/output', (c) => {
+  const id = c.req.param('id');
+  const session = codexMgr.get(id);
+  if (!session) return c.text('Session not found', 404);
+  return c.json({ id, output: session.getOutput(), status: session.info.status });
+});
+
+app.post('/api/codex/:id/stop', (c) => {
+  const id = c.req.param('id');
+  const session = codexMgr.get(id);
+  if (!session) return c.text('Session not found', 404);
+  session.stop();
+  return c.json({ ok: true, id });
+});
+
+app.get('/api/codex/sessions', (c) => {
+  return c.json(codexMgr.list());
+});
+
 // ── Skill Learning Routes ──────────────────────────────────────────
 
 let slInitialized = false;
@@ -2968,7 +2952,74 @@ app.post('/api/skill-learning/analyze/recent', async (c) => {
   } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
+// ── Gateway initialization ────────────────────────────
+const gateway = getGateway();
+gateway.register(new TelegramChannel(runtime, db, triggerAutomation));
+gateway.register(new LineChannel(runtime, db, triggerAutomation));
+gateway.startAll().catch(e => console.error("Gateway init error:", e));
+
+// ── WebSocket protocol methods ───────────────────────
+registerMethod('gateway.status', () => gateway.getStatus());
+registerMethod('gateway.restartChannel', async (params: { name: string }) => {
+  const ch = gateway.getChannel(params.name);
+  if (!ch) throw new Error(`Unknown channel: ${params.name}`);
+  ch.stop();
+  await ch.start();
+  return { ok: true, name: params.name };
+});
+registerMethod('sessions.list', () => {
+  const rows = db.query(`
+    SELECT s.id, s.title, s.model, s.created_at, s.updated_at,
+           (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as messageCount
+    FROM sessions s ORDER BY s.updated_at DESC LIMIT 50
+  `).all();
+  return rows;
+});
+registerMethod('approvals.list', () => {
+  return db.query('SELECT * FROM approvals WHERE status = ? ORDER BY created_at DESC LIMIT 20').all('pending');
+});
+
+// ── Gateway REST API routes ──────────────────────────
+app.get('/api/gateway/status', (c) => {
+  return c.json({ channels: gateway.getStatus() });
+});
+
+app.post('/api/gateway/channels/:name/restart', async (c) => {
+  const name = c.req.param('name');
+  const ch = gateway.getChannel(name);
+  if (!ch) return c.json({ error: `Unknown channel: ${name}` }, 404);
+  try {
+    ch.stop();
+    await ch.start();
+    return c.json({ ok: true, name });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post('/api/gateway/channels/:name/stop', async (c) => {
+  const name = c.req.param('name');
+  const ch = gateway.getChannel(name);
+  if (!ch) return c.json({ error: `Unknown channel: ${name}` }, 404);
+  ch.stop();
+  return c.json({ ok: true, name });
+});
+
+// ── WebSocket route ───────────────────────────────────
+app.get('/ws', (c) => {
+  // Bun will handle WebSocket upgrade — this signals it
+  return new Response(null, { status: 101 });
+});
+
 export default {
   port: process.env.API_PORT || 3001,
   fetch: app.fetch,
+  websocket: {
+    open(ws: WebSocket) {
+      // Use handleWsUpgrade which sets up addEventListener internally
+      getGateway().handleWsUpgrade(ws);
+    },
+    // message/close handled via addEventListener in handleWsUpgrade
+    drain(ws: WebSocket) {},
+  },
 };

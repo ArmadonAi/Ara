@@ -17,6 +17,7 @@
     "@ara/permissions": "workspace:*",
     "@ara/hooks": "workspace:*",
     "@ara/subagents": "workspace:*",
-    "@ara/checkpoints": "workspace:*"
+    "@ara/checkpoints": "workspace:*",
+    "@ara/coding-agent": "workspace:*"
   }
 }

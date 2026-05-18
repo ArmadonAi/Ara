@@ -6,7 +6,15 @@ Ara is a local-first personal AI control plane. It gives you a secure, auditable
 
 ## What's New in v0.2.0
 
+- **Messaging Gateway**: Real-time gateway connecting AI agents to Telegram and LINE. WebSocket protocol for live events, REST API for channel management.
+- **Telegram Bot**: Full-featured Telegram integration with long polling, media support (images, documents, voice, video, stickers), group chat access control, inline keyboard approvals, and streaming replies.
+- **LINE Bot**: LINE Messaging API integration with HMAC signature verification, media download, group access control, and loading animations.
+- **Channel Automation Triggers**: Automations can be triggered by keyword matching on incoming Telegram/LINE messages — runs headlessly without starting a conversation.
+- **Web UI Gateway Dashboard**: Gateway channel status displayed in the sidebar with running/stopped indicators.
+- **`ara gateway` CLI**: `ara gateway status`, `ara gateway restart <name>`, `ara gateway stop <name>`.
+- **Auto-generated config templates**: `.ara/telegram.json` and `.ara/line.json` created automatically on first start.
 - **Enhanced diagnostics**: `ara doctor` now checks permissions, locks, checkpoints, MCP/GitHub configs, and path leakage.
+- **Server Runtime**: `ara server` command group to start, stop, restart, and monitor the local Ara runtime (API, Web, Worker) with process management, health checks, log viewing, and port checking.
 - **Release tooling**: Standardized versioning, changelog, and release checklist for future releases.
 - **All v0.1.0 features** remain stable and verified.
 
@@ -23,7 +31,10 @@ Ara is a local-first personal AI control plane. It gives you a secure, auditable
 - **File locks** — prevent concurrent write conflicts
 - **Lifecycle hooks** — run commands or HTTP calls on session/tool events
 - **`ara doctor`** — full environment diagnostics including subsystem checks
+- **`ara server`** — start, stop, restart, and monitor the local runtime
+- **`ara gateway`** — gateway channel status, restart, and stop
 - **`ara status`** — standalone CLI diagnostics without API dependency
+- **Messaging channels** — Telegram bot and LINE bot integration
 
 ## How to Install
 
@@ -137,7 +148,7 @@ Not yet suitable for:
 
 ## Verification
 
-- 318+ tests passing, 0 failing
+- 401+ tests passing, 0 failing
 - TypeScript strict mode: 0 errors
 - Build: API, Web (Vite), CLI (bundled)
 - `ara doctor` passes all subsystem checks with API online

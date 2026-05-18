@@ -36,3 +36,7 @@ test-hooks-temp/
 
 # Developer Local Tooling Metadata
 CLAUDE.md
+.claude/
+
+# Ara runtime data
+.ara/

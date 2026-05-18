@@ -27,6 +27,13 @@ bun run dev:web     # Vite frontend on :5173
 bun run dev:worker  # Background cron
 bun run dev:cli     # CLI / TUI
 
+# Or use the unified server runtime
+bun run apps/cli/src/main.tsx server start              # API + Worker
+bun run apps/cli/src/main.tsx server start --with-web    # + Web UI
+bun run apps/cli/src/main.tsx server stop                # Stop all
+bun run apps/cli/src/main.tsx server status              # Check status
+bun run apps/cli/src/main.tsx server logs                # View logs
+
 # Build
 bun run build       # All apps
 bun run build:cli   # CLI binary only

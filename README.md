@@ -6,7 +6,7 @@
 ![License](https://img.shields.io/github/license/DrakonArt/Ara?style=for-the-badge)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict--only-3178c6?style=for-the-badge&logo=typescript)
 ![Bun](https://img.shields.io/badge/Bun-fast-000000?style=for-the-badge&logo=bun)
-![Tests](https://img.shields.io/badge/318_Tests_Passing-green?style=for-the-badge)
+![Tests](https://img.shields.io/badge/401_Tests_Passing-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Early_development-red?style=for-the-badge)
 ![Language](https://img.shields.io/badge/Language-TypeScript-3178c6?style=for-the-badge&logo=typescript)
 
@@ -18,8 +18,9 @@ Ara is a secure, local-first personal AI assistant and autonomous workspace cont
 
 ## Key Capabilities
 
-* **Web Control Dashboard**: High-performance React/Vite dashboard with SSE streaming, real-time typing, collapsible thought logs, and interactive tool-execution monitoring.
-* **CLI/TUI Gateway**: Responsive CLI and fullscreen terminal UI built with Commander.js and React Ink.
+* **Web Control Dashboard**: High-performance React/Vite dashboard with SSE streaming, real-time typing, collapsible thought logs, interactive tool-execution monitoring, and gateway channel status panel.
+* **CLI/TUI Gateway**: Responsive CLI and fullscreen terminal UI built with Commander.js and React Ink. Includes `ara server` runtime management and `ara gateway` channel control.
+* **Messaging Gateway**: Real-time WebSocket gateway connecting AI agents to Telegram and LINE. Long-polling and webhook-based channels with media support, access control, and approval keyboards.
 * **ReAct Agent Runtime**: Autonomous planning and execution agent loop with tool calling and dynamic feedback digestion.
 * **Permission Engine**: Policy-driven access controller with 5 modes (`plan`, `default`, `accept-edits`, `auto-safe`, `danger-review`) and 21 default deny rules for credentials, secrets, and dangerous commands.
 * **Lifecycle Hooks System**: Hooks for `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `ToolFailed`, `SessionEnd`, plus MCP and GitHub lifecycle events.
@@ -38,7 +39,7 @@ Ara is a secure, local-first personal AI assistant and autonomous workspace cont
 ```
 apps/
   web/           React / Vite / TypeScript Dashboard UI
-  api/           Hono REST API / SSE Chat Gateway & SQLite DB
+  api/           Hono REST API / SSE Chat Gateway & SQLite DB + Gateway (Telegram, LINE, WebSocket)
   worker/        Background Cron Scheduler & Automation Worker
   cli/           CLI & fullscreen Terminal UI (TUI) binary gateway
 
@@ -135,6 +136,10 @@ Create `.ara/github.json`:
 | `bun run dev:api` | Start Hono REST API |
 | `bun run dev:worker` | Start background cron worker |
 | `bun run dev:cli` | CLI / TUI gateway |
+| `ara server start` | Start API + Worker runtime (use `--with-web` for Web UI) |
+| `ara server stop` | Stop all runtime processes |
+| `ara server status` | Show runtime status, PIDs, ports, health |
+| `ara server logs` | View process logs |
 | `bun run build` | Build all apps |
 | `bun run build:cli` | Bundle CLI binary |
 | `bun run typecheck` | TypeScript compiler validation |

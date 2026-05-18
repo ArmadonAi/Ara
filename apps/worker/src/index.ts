@@ -42,6 +42,11 @@ db.run(`
   )
 `);
 
+// Migration: add channel_trigger and keyword columns if missing
+try { db.run('ALTER TABLE automations ADD COLUMN channel_trigger TEXT DEFAULT NULL'); } catch {}
+try { db.run('ALTER TABLE automations ADD COLUMN keyword TEXT DEFAULT NULL'); } catch {}
+try { db.run('ALTER TABLE automations ADD COLUMN reply_channel TEXT DEFAULT NULL'); } catch {}
+
 // 2. Initialize Agent Runtime for headless automation runs
 const router = new ModelRouter();
 router.register('Gemini', new GeminiProvider());

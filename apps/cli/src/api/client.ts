@@ -865,4 +865,64 @@ export class ApiClient {
     if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     return res.json() as any;
   }
+
+  // ── Codex Methods ────────────────────────────────────────────
+
+  async startCodex(binary?: string, prompt?: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/codex/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ binary, prompt }),
+    });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  async sendCodex(id: string, input: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/codex/${encodeURIComponent(id)}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input }),
+    });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  async getCodexOutput(id: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/codex/${encodeURIComponent(id)}/output`);
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  async stopCodex(id: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/codex/${encodeURIComponent(id)}/stop`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  async listCodexSessions(): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/codex/sessions`);
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  // ── Gateway Methods ───────────────────────────────────────────
+
+  async getGatewayStatus(): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/gateway/status`);
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  async restartGatewayChannel(name: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/gateway/channels/${encodeURIComponent(name)}/restart`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
+
+  async stopGatewayChannel(name: string): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/gateway/channels/${encodeURIComponent(name)}/stop`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    return res.json() as any;
+  }
 }

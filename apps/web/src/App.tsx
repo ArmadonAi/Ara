@@ -11,6 +11,9 @@ interface Message {
 interface Approval {
   id: string; toolName: string; input: string; riskLevel: string; reason: string;
 }
+interface GatewayChannel {
+  name: string; running: boolean; healthy: boolean; info: Record<string, any>;
+}
 
 const API_BASE = 'http://localhost:3001';
 
@@ -23,9 +26,10 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [gatewayChannels, setGatewayChannels] = useState<GatewayChannel[]>([]);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadSessions(); loadApprovals(); }, []);
+  useEffect(() => { loadSessions(); loadApprovals(); loadGateway(); }, []);
 
   useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -138,6 +142,16 @@ export default function App() {
     } catch {}
   };
 
+  const loadGateway = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/gateway/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setGatewayChannels(data.channels || []);
+      }
+    } catch {}
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
@@ -164,6 +178,19 @@ export default function App() {
             ))}
             {sessions.length === 0 && <div style={{ padding: '16px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>No conversations yet</div>}
           </div>
+          {/* Gateway status */}
+          {gatewayChannels.length > 0 && (
+            <div className="gateway-panel">
+              <div className="gateway-header">Gateway</div>
+              {gatewayChannels.map(ch => (
+                <div key={ch.name} className="gateway-row">
+                  <span className={`gateway-dot ${ch.running ? 'running' : 'stopped'}`} />
+                  <span className="gateway-name">{ch.name}</span>
+                  <span className="gateway-state">{ch.running ? 'running' : 'stopped'}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="sidebar-footer">Ara v0.1.0</div>
         </div>
       )}

@@ -97,7 +97,105 @@ ara
 
   Outputs the full chat transcript history for the specified session.
 
-### 3. Risk Authorization & Approvals Gate
+### 3. Server Runtime Commands
+
+Manage the local Ara server runtime (API, Web, Worker) from the CLI.
+
+* **Show server status**:
+
+  ```bash
+  ara server status
+  ```
+
+  Displays running processes, PIDs, ports, URLs, and health state.
+
+* **Start server**:
+
+  ```bash
+  ara server start                    # API + Worker (default)
+  ara server start --with-web         # Include Web UI
+  ara server start --foreground       # Stream logs to terminal
+  ara server start --api-port 4000    # Custom API port
+  ara server start --api-only         # API server only
+  ```
+
+* **Stop server**:
+
+  ```bash
+  ara server stop          # Stop all processes
+  ara server stop api      # Stop API only
+  ara server stop web      # Stop Web only
+  ara server stop worker   # Stop Worker only
+  ```
+
+* **Restart server**:
+
+  ```bash
+  ara server restart --with-web
+  ```
+
+* **View logs**:
+
+  ```bash
+  ara server logs                     # Last 50 lines from all
+  ara server logs --api               # API logs only
+  ara server logs --lines 100         # Custom line count
+  ara server logs --follow            # Show tail commands
+  ```
+
+* **Open Web UI**:
+
+  ```bash
+  ara server open
+  ```
+
+  Opens the Web UI in your default browser. If Web UI is not running, prints the start command.
+
+See [SERVER.md](SERVER.md) for detailed documentation.
+
+### 4. Gateway Commands
+
+Manage messaging gateway channels (Telegram, LINE).
+
+* **Show gateway status**:
+
+  ```bash
+  ara gateway status
+  ```
+
+  Displays all registered channels with running/stopped state and health.
+
+  ```
+    Gateway Channels
+    ──────────────────────────────────────────────────
+    ● telegram    healthy  running
+       hasToken: true
+       groupPolicy: disabled
+    ● line        healthy  running
+       hasToken: false
+       groupPolicy: disabled
+    ──────────────────────────────────────────────────
+    2 channel(s)
+  ```
+
+* **Restart a channel**:
+
+  ```bash
+  ara gateway restart telegram
+  ara gateway restart line
+  ```
+
+  Stops and re-initializes the channel. Useful after changing config.
+
+* **Stop a channel**:
+
+  ```bash
+  ara gateway stop telegram
+  ```
+
+See [GATEWAY.md](GATEWAY.md) for detailed documentation on channels, WebSocket protocol, and automation triggers.
+
+### 5. Risk Authorization & Approvals Gate
 
 * **List Pending Approvals**:
 
@@ -183,7 +281,7 @@ Checkpoints capture workspace file states and session transcript snapshots, enab
 
   Prints available checkpoints and suggests restore commands for quick rollback.
 
-### 5. System Diagnostics & Healthchecks
+### 6. System Diagnostics & Healthchecks
 
 * **Status Diagnostics**:
 

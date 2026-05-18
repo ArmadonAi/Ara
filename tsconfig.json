@@ -20,6 +20,7 @@
     { "path": "./packages/locks" },
     { "path": "./packages/canvas" },
     { "path": "./packages/skill-learning" },
+    { "path": "./packages/coding-agent" },
     { "path": "./tests" }
   ]
 }

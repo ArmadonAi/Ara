@@ -8,6 +8,9 @@ import { ApiClient } from './api/client';
 import { loadConfig, saveConfig, setApiBaseUrl, getApiBaseUrl } from './config/manager';
 import { TuiApp } from './components/TuiApp';
 import { runClawMigration, detectOpenClaw, runHermesMigration, detectHermes } from './claw/migrate';
+import { createServerCommand } from './server/commands';
+import { createGatewayCommand } from './gateway/commands';
+import { createCodexCommand } from './codex/commands';
 
 const program = new Command();
 const client = new ApiClient();
@@ -571,6 +574,68 @@ program
       else info('.ara/' + d.replace('.ara/', '') + ' will be created on first boot');
     }
 
+    // ── Server state ────────────────────────────────────────────
+    const serverDir = path.join(cwd, '.ara', 'server');
+    if (fs.existsSync(serverDir)) {
+      ok('.ara/server/ exists');
+      const logsDir = path.join(serverDir, 'logs');
+      if (fs.existsSync(logsDir)) ok('.ara/server/logs/ writable');
+      else info('.ara/server/logs/ will be created on first server start');
+
+      // Check for stale PID files
+      const pidTargets = ['api.pid', 'web.pid', 'worker.pid'];
+      let staleFound = false;
+      for (const pidFile of pidTargets) {
+        const pf = path.join(serverDir, pidFile);
+        if (fs.existsSync(pf)) {
+          const pid = parseInt(fs.readFileSync(pf, 'utf8').trim(), 10);
+          if (isNaN(pid)) {
+            info('Stale PID file: ' + pidFile + ' (invalid content)');
+            staleFound = true;
+          } else {
+            try {
+              process.kill(pid, 0);
+              ok(pidFile.replace('.pid', '') + ' running (pid ' + pid + ')');
+            } catch {
+              info('Stale PID file: ' + pidFile + ' (pid ' + pid + ' not running)');
+              staleFound = true;
+            }
+          }
+        }
+      }
+      if (!staleFound) ok('No stale PID files');
+
+      // Check server.json
+      const sj = path.join(serverDir, 'server.json');
+      if (fs.existsSync(sj)) {
+        try {
+          JSON.parse(fs.readFileSync(sj, 'utf8'));
+          ok('server.json valid');
+        } catch {
+          err('server.json contains invalid JSON');
+        }
+      } else {
+        info('server.json not yet created');
+      }
+    } else {
+      info('.ara/server/ not yet created - run: ara server start');
+    }
+
+    // ── Port availability ───────────────────────────────────────
+    const net = await import('node:net');
+    const checkPort = (port) => new Promise(resolve => {
+      const srv = net.createServer();
+      srv.once('error', () => resolve(false));
+      srv.once('listening', () => { srv.close(); resolve(true); });
+      srv.listen(port, '127.0.0.1');
+    });
+    const apiPortFree = await checkPort(3001);
+    if (apiPortFree) ok('Port 3001 (API) available');
+    else info('Port 3001 (API) in use - may be expected if server is running');
+    const webPortFree = await checkPort(5173);
+    if (webPortFree) ok('Port 5173 (Web) available');
+    else info('Port 5173 (Web) in use - may be expected if server is running');
+
     // ── Config examples ────────────────────────────────────────
     if (fs.existsSync(path.join(cwd, '.ara', 'examples'))) ok('Config examples present');
     else info('Config examples not found (not required)');
@@ -640,6 +705,38 @@ program
       }
     } else {
       info('GitHub config not found — create .ara/github.json to use GitHub tools');
+    // ---- Telegram config check ---
+    const tgConfigPath = path.join(cwd, '.ara', 'telegram.json');
+    if (fs.existsSync(tgConfigPath)) {
+      try {
+        const raw = fs.readFileSync(tgConfigPath, 'utf-8');
+        const cfg = JSON.parse(raw);
+        if (cfg.botToken || process.env.TELEGRAM_BOT_TOKEN) ok('Telegram config present');
+        else info('Telegram config present but no botToken set');
+      } catch {
+        err('Telegram config found but contains invalid JSON');
+      }
+    } else if (process.env.TELEGRAM_BOT_TOKEN) {
+      ok('Telegram configured via TELEGRAM_BOT_TOKEN env');
+    } else {
+      info('Telegram not configured');
+    // ---- LINE config check ---
+    const lineConfigPath = path.join(cwd, '.ara', 'line.json');
+    if (fs.existsSync(lineConfigPath)) {
+      try {
+        const raw = fs.readFileSync(lineConfigPath, 'utf-8');
+        const cfg = JSON.parse(raw);
+        if (cfg.channelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN) ok('LINE config present');
+        else info('LINE config present but no channelAccessToken set');
+      } catch {
+        err('LINE config found but contains invalid JSON');
+      }
+    } else if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+      ok('LINE configured via LINE_CHANNEL_ACCESS_TOKEN env');
+    } else {
+      info('LINE not configured');
+    }
+    }
     }
 
     // ── Path leakage check ──────────────────────────────────────
@@ -2368,14 +2465,15 @@ skills
   });
 
 // -------------------------------------------------------------
-// Onboarding Setup Command
+// Onboarding Setup Command (full wizard)
 // -------------------------------------------------------------
 program
-  .command('setup')
-  .description('Interactive first-time onboarding and configuration setup wizard')
+  .command('onboard')
+  .alias('onboarding')
+  .description('Interactive full onboarding wizard for new Ara users')
   .action(async () => {
     console.log('\n🌟 Welcome to Ara: Personal AI Control Plane Onboarding Wizard! 🌟\n');
-    
+
     // 1. Detect OpenClaw
     const hasOpenClaw = await detectOpenClaw();
     if (hasOpenClaw) {
@@ -2399,7 +2497,7 @@ program
       }
     }
 
-    // 1.5. Detect Hermes
+    // 2. Detect Hermes
     const hasHermes = await detectHermes();
     if (hasHermes) {
       console.log('🔍 Detected an existing Hermes setup in ~/.hermes!');
@@ -2422,12 +2520,15 @@ program
       }
     }
 
-    // 2. Guide standard Ara configuration setup
-    console.log('🔧 Standard Ara Configuration Setup:');
-    const modelAns = await askUser('Configure default LLM model (e.g. Gemini, OpenAI, Anthropic) [Gemini]: ');
+    // 3. LLM Provider
+    console.log('🔧 LLM Provider Configuration:');
+    console.log('  Ara needs at least one LLM provider to function.');
+    console.log('  You can set API keys manually via .env or configure now.\n');
+    const modelAns = await askUser('Default LLM model (Gemini, OpenAI, Anthropic) [Gemini]: ');
     const model = modelAns.trim() || 'Gemini';
 
-    const apiAns = await askUser('Configure API server base URL [http://localhost:3001]: ');
+    // 4. API base URL
+    const apiAns = await askUser('API server base URL [http://localhost:3001]: ');
     const apiBase = apiAns.trim() || 'http://localhost:3001';
 
     const config = loadConfig();
@@ -2435,9 +2536,94 @@ program
     config.apiBaseUrl = apiBase;
     saveConfig(config);
 
-    console.log('\n🎉 Onboarding setup complete! To start the Control Plane:');
+    // 5. Gateway channel configuration
+    console.log('\n── Messaging Gateway ──────────────────────────');
+    console.log('  Ara can connect to messaging platforms so you can');
+    console.log('  chat with the AI from Telegram or LINE.\n');
+
+    const setupTelegram = await askUser('Configure Telegram bot? Get token from @BotFather (y/N): ');
+    if (setupTelegram.toLowerCase().trim() === 'y' || setupTelegram.toLowerCase().trim() === 'yes') {
+      const tgToken = await askUser('Telegram Bot Token: ');
+      if (tgToken.trim()) {
+        const tgCfgPath = path.join(process.cwd(), '.ara', 'telegram.json');
+        const fs = require('node:fs');
+        const dir = path.dirname(tgCfgPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(tgCfgPath, JSON.stringify({
+          botToken: tgToken.trim(),
+          enabled: true,
+          allowFrom: [],
+          groupPolicy: 'disabled',
+          groups: {},
+          streaming: true,
+        }, null, 2));
+        console.log('  ✓ Telegram config saved to .ara/telegram.json');
+      }
+    }
+
+    const setupLine = await askUser('Configure LINE bot? Channel from LINE Developer Console (y/N): ');
+    if (setupLine.toLowerCase().trim() === 'y' || setupLine.toLowerCase().trim() === 'yes') {
+      const lineToken = await askUser('LINE Channel Access Token: ');
+      const lineSecret = await askUser('LINE Channel Secret: ');
+      if (lineToken.trim() || lineSecret.trim()) {
+        const lineCfgPath = path.join(process.cwd(), '.ara', 'line.json');
+        const fs = require('node:fs');
+        const dir = path.dirname(lineCfgPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const existing: any = fs.existsSync(lineCfgPath)
+          ? JSON.parse(fs.readFileSync(lineCfgPath, 'utf-8')) : {};
+        fs.writeFileSync(lineCfgPath, JSON.stringify({
+          ...existing,
+          channelAccessToken: lineToken.trim() || existing.channelAccessToken || '',
+          channelSecret: lineSecret.trim() || existing.channelSecret || '',
+          enabled: true,
+        }, null, 2));
+        console.log('  ✓ LINE config saved to .ara/line.json');
+      }
+    }
+
+    console.log('\n🎉 Onboarding complete! To start the Control Plane:');
     console.log('   1. Start the API server:   bun run dev:api');
-    console.log('   2. Start the CLI / TUI:     ara\n');
+    console.log('   2. Start the CLI / TUI:     ara');
+    console.log('   3. Check gateway status:    ara gateway status');
+    console.log('\n📖 Documentation: docs/ directory');
+    console.log('');
+  });
+
+// Quick setup command
+// -------------------------------------------------------------
+program
+  .command('setup')
+  .description('Quick configuration (model, API URL, channels)')
+  .action(async () => {
+    console.log('\n⚡ Ara Quick Setup\n');
+
+    // Model
+    const modelAns = await askUser('Default LLM model [Gemini]: ');
+    const model = modelAns.trim() || 'Gemini';
+
+    // API URL
+    const apiAns = await askUser('API server base URL [http://localhost:3001]: ');
+    const apiBase = apiAns.trim() || 'http://localhost:3001';
+
+    const config = loadConfig();
+    config.defaultModel = model;
+    config.apiBaseUrl = apiBase;
+    saveConfig(config);
+    console.log('  ✓ Config saved');
+
+    // Channels (quick ask)
+    const tgAns = await askUser('Telegram bot token (or blank to skip): ');
+    if (tgAns.trim()) {
+      const tgCfgPath = path.join(process.cwd(), '.ara', 'telegram.json');
+      const fs = require('node:fs');
+      const dir = path.dirname(tgCfgPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(tgCfgPath, JSON.stringify({ botToken: tgAns.trim(), enabled: true, allowFrom: [], groupPolicy: 'disabled', groups: {}, streaming: true }, null, 2));
+      console.log('  ✓ Telegram configured');
+    }
+
+    console.log('\n  Run "ara onboard" for full setup with migration.\n');
   });
 
 // -------------------------------------------------------------
@@ -2583,8 +2769,10 @@ program
   .description('System maintenance tasks (JSONL compaction, stats)')
   .action(() => {
     console.log('\nUsage: ara maintenance <command>\n');
-    console.log('  ara maintenance compact     Compact JSONL audit files');
-    console.log('  ara maintenance stats       Show JSONL file sizes\n');
+    console.log('  ara maintenance compact        Compact JSONL audit files');
+    console.log('  ara maintenance stats          Show JSONL file sizes');
+    console.log('  ara maintenance prune-backups  Remove old backups');
+    console.log('  ara maintenance prune-audit    Prune old audit logs\n');
   });
 
 program
@@ -2693,5 +2881,147 @@ program
 
     console.log('\n  Total: ' + totalFiles + ' files, ' + (totalBytes / 1024).toFixed(1) + ' KB, ' + totalLines + ' lines\n');
   });
+
+// ── ara maintenance prune-backups ────────────────────────────
+program
+  .command('maintenance prune-backups')
+  .description('Remove old backups from .ara/backups/ (keeps newest N per file)')
+  .option('--keep <n>', 'Number of recent backups to keep per file', parseInt, 5)
+  .option('--older-than <days>', 'Remove backups older than N days', parseInt, 30)
+  .action(async (opts: { keep?: number; 'older-than'?: number }) => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const backupsDir = path.join(process.cwd(), '.ara', 'backups');
+    const keep = Math.max(opts.keep || 5, 1);
+    const maxAge = (opts['older-than'] || 30) * 86400 * 1000;
+    const now = Date.now();
+
+    if (!fs.existsSync(backupsDir)) {
+      console.log('\n  No backups directory.\n');
+      return;
+    }
+
+    // Group backups by original file name (format: <relpath>_<timestamp>.bak)
+    const files = fs.readdirSync(backupsDir);
+    const groups: Record<string, { name: string; mtime: number }[]> = {};
+
+    for (const f of files) {
+      if (!f.endsWith('.bak')) continue;
+      const fp = path.join(backupsDir, f);
+      const stat = fs.statSync(fp);
+      const base = f.replace(/_\d+\.bak$/, ''); // group by original filename
+      if (!groups[base]) groups[base] = [];
+      groups[base].push({ name: f, mtime: stat.mtimeMs });
+    }
+
+    let removed = 0;
+    let freed = 0;
+
+    for (const [base, backups] of Object.entries(groups)) {
+      // Sort newest first
+      backups.sort((a, b) => b.mtime - a.mtime);
+
+      for (let i = keep; i < backups.length; i++) {
+        const b = backups[i];
+        const age = now - b.mtime;
+        if (age < maxAge) continue; // skip if not old enough
+        const fp = path.join(backupsDir, b.name);
+        const size = fs.statSync(fp).size;
+        fs.unlinkSync(fp);
+        removed++;
+        freed += size;
+      }
+    }
+
+    const freedKB = (freed / 1024).toFixed(1);
+    console.log(`\n  Removed ${removed} backup(s), freed ${freedKB} KB\n`);
+  });
+
+// ── ara maintenance prune-audit ─────────────────────────────
+program
+  .command('maintenance prune-audit')
+  .description('Remove old JSONL audit log files (keeps newest N per file)')
+  .option('--keep <n>', 'Number of recent entries to keep per file', parseInt, 500)
+  .option('--older-than <days>', 'Remove files older than N days', parseInt, 60)
+  .action(async (opts: { keep?: number; 'older-than'?: number }) => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { compactJSONLDir, getJSONLDirStats } = await import('@ara/tools');
+    const cwd = process.cwd();
+    const keep = Math.max(opts.keep || 500, 100);
+    const maxAge = (opts['older-than'] || 60) * 86400 * 1000;
+    const now = Date.now();
+
+    const dirs = [
+      path.join(cwd, '.ara', 'audit'),
+      path.join(cwd, '.ara', 'skill-learning'),
+      path.join(cwd, '.ara', 'canvas'),
+    ];
+
+    let totalRemoved = 0;
+    let totalFreed = 0;
+
+    console.log('\nPruning audit logs (keeping last ' + keep + ' entries, older than ' + (opts['older-than'] || 60) + ' days)...\n');
+
+    for (const dir of dirs) {
+      if (!fs.existsSync(dir)) continue;
+      const stats = getJSONLDirStats(dir);
+      if (stats.files === 0) continue;
+
+      const before = stats.totalBytes;
+      const r = compactJSONLDir(dir, keep);
+      for (const [, result] of Object.entries(r.results)) {
+        if (result.removedLines > 0) totalRemoved += result.removedLines;
+      }
+
+      // Also remove empty .jsonl files older than maxAge
+      const files = fs.readdirSync(dir);
+      for (const f of files) {
+        if (!f.endsWith('.jsonl')) continue;
+        const fp = path.join(dir, f);
+        const stat = fs.statSync(fp);
+        if (stat.size === 0 && (now - stat.mtimeMs) > maxAge) {
+          fs.unlinkSync(fp);
+        }
+      }
+
+      const after = getJSONLDirStats(dir).totalBytes;
+      totalFreed += before - after;
+      console.log(`  ${path.basename(dir)}: compacted, saved ${((before - after) / 1024).toFixed(1)} KB`);
+    }
+
+    console.log(`\n  Total removed: ${totalRemoved} lines, freed ${(totalFreed / 1024).toFixed(1)} KB\n`);
+  });
+
+program.addCommand(createServerCommand());
+program.addCommand(createGatewayCommand());
+program.addCommand(createCodexCommand());
+
+// ── ara claude shortcut ─────────────────────────────────────
+program
+  .command('claude')
+  .description('Start a Claude Code coding session (shortcut for "ara codex start --binary claude")')
+  .argument('[prompt]', 'Optional initial prompt')
+  .action(async (prompt: string | undefined) => {
+    try {
+      const bin = 'claude';
+      const binPath = Bun.which(bin);
+      if (!binPath) {
+        console.error('\n  Claude Code not found. Install: npm install -g @anthropic/claude-code\n');
+        return;
+      }
+      console.log(`\n  Starting Claude Code session...\n`);
+      const result = await client.startCodex(bin, prompt);
+      console.log(`  Session: ${result.id}`);
+      console.log(`  Status: ${result.status}`);
+      console.log(`\n  Interact:`);
+      console.log(`    ara codex send ${result.id} "your message"`);
+      console.log(`    ara codex output ${result.id}`);
+      console.log(`    ara codex stop ${result.id}\n`);
+    } catch (e: any) {
+      console.error(`\n  Error: ${e.message}\n`);
+    }
+  })
+  .addHelpText('after', '\nAlias for: ara codex start --binary claude\n');
 
 program.parse(process.argv);
